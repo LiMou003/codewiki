@@ -36,14 +36,14 @@ export default function ProcessedProjects({
 
   // Default messages fallback
   const defaultMessages = {
-    title: 'Processed Wiki Projects',
-    searchPlaceholder: 'Search projects by name, owner, or repository...',
-    noProjects: 'No projects found in the server cache. The cache might be empty or the server encountered an issue.',
-    noSearchResults: 'No projects match your search criteria.',
-    processedOn: 'Processed on:',
-    loadingProjects: 'Loading projects...',
-    errorLoading: 'Error loading projects:',
-    backToHome: 'Back to Home'
+    title: '已处理的Wiki项目',
+    searchPlaceholder: '按项目名称、所有者或仓库搜索...',
+    noProjects: '服务器缓存中未找到项目。缓存可能为空或服务器遇到问题。',
+    noSearchResults: '没有项目符合您的搜索条件。',
+    processedOn: '处理时间:',
+    loadingProjects: '正在加载项目...',
+    errorLoading: '加载项目时出错:',
+    backToHome: '返回首页'
   };
 
   const t = (key: string) => {
@@ -102,7 +102,7 @@ export default function ProcessedProjects({
   };
 
   const handleDelete = async (project: ProcessedProject) => {
-    if (!confirm(`Are you sure you want to delete project ${project.name}?`)) {
+    if (!confirm(`确定要删除项目 ${project.name} 吗？`)) {
       return;
     }
     try {
@@ -123,7 +123,7 @@ export default function ProcessedProjects({
       setProjects(prev => prev.filter(p => p.id !== project.id));
     } catch (e: unknown) {
       console.error('Failed to delete project:', e);
-      alert(`Failed to delete project: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      alert(`删除项目失败：${e instanceof Error ? e.message : '未知错误'}`);
     }
   };
 
@@ -170,7 +170,7 @@ export default function ProcessedProjects({
                 ? 'bg-[var(--accent-primary)] text-white'
                 : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-bg)]'
             }`}
-            title="Card View"
+            title="卡片视图"
           >
             <FaTh className="h-4 w-4" />
           </button>
@@ -181,7 +181,7 @@ export default function ProcessedProjects({
                 ? 'bg-[var(--accent-primary)] text-white'
                 : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-bg)]'
             }`}
-            title="List View"
+            title="列表视图"
           >
             <FaList className="h-4 w-4" />
           </button>
@@ -200,7 +200,7 @@ export default function ProcessedProjects({
                   type="button"
                   onClick={() => handleDelete(project)}
                   className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-                  title="Delete project"
+                  title="删除项目"
                 >
                   <FaTimes className="h-4 w-4" />
                 </button>
@@ -230,7 +230,7 @@ export default function ProcessedProjects({
                   type="button"
                   onClick={() => handleDelete(project)}
                   className="absolute top-2 right-2 text-[var(--muted)] hover:text-[var(--foreground)]"
-                  title="Delete project"
+                  title="删除项目"
                 >
                   <FaTimes className="h-4 w-4" />
                 </button>
