@@ -255,7 +255,7 @@ export default function Home() {
     const parsedRepo = parseRepositoryInput(repositoryInput);
 
     if (!parsedRepo) {
-      setError('Invalid repository format. Use "owner/repo", GitHub/GitLab/BitBucket URL, or a local folder path like "/path/to/folder" or "C:\\path\\to\\folder".');
+      setError('仓库格式无效。请使用"owner/repo"格式、GitHub/GitLab/BitBucket URL，或本地文件夹路径（如"/path/to/folder"或"C:\\path\\to\\folder"）。');
       return;
     }
 
@@ -294,8 +294,8 @@ export default function Home() {
     // Check authorization code
     const validation = await validateAuthCode();
     if(!validation) {
-      setError(`Failed to validate the authorization code`);
-      console.error(`Failed to validate the authorization code`);
+      setError(`授权码验证失败`);
+      console.error(`授权码验证失败`);
       setIsConfigModalOpen(false);
       return;
     }
@@ -336,7 +336,7 @@ export default function Home() {
     const parsedRepo = parseRepositoryInput(repositoryInput);
 
     if (!parsedRepo) {
-      setError('Invalid repository format. Use "owner/repo", GitHub/GitLab/BitBucket URL, or a local folder path like "/path/to/folder" or "C:\\path\\to\\folder".');
+      setError('仓库格式无效。请使用"owner/repo"格式、GitHub/GitLab/BitBucket URL，或本地文件夹路径（如"/path/to/folder"或"C:\\path\\to\\folder"）。');
       setIsSubmitting(false);
       return;
     }

@@ -694,7 +694,7 @@ const Ask: React.FC<AskProps> = ({
           <div className="flex items-center mt-2 justify-between">
             <div className="group relative">
               <label className="flex items-center cursor-pointer">
-                <span className="text-xs text-gray-600 dark:text-gray-400 mr-2">Deep Research</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400 mr-2">{messages.ask?.deepResearch || '深度研究'}</span>
                 <div className="relative">
                   <input
                     type="checkbox"
@@ -709,23 +709,23 @@ const Ask: React.FC<AskProps> = ({
               <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded p-2 w-72 z-10">
                 <div className="relative">
                   <div className="absolute -bottom-2 left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
-                  <p className="mb-1">Deep Research conducts a multi-turn investigation process:</p>
+                  <p className="mb-1">{messages.ask?.deepResearchTooltip || '深度研究进行多轮调查：'}</p>
                   <ul className="list-disc pl-4 text-xs">
-                    <li><strong>Initial Research:</strong> Creates a research plan and initial findings</li>
-                    <li><strong>Iteration 1:</strong> Explores specific aspects in depth</li>
-                    <li><strong>Iteration 2:</strong> Investigates remaining questions</li>
-                    <li><strong>Iterations 3-4:</strong> Dives deeper into complex areas</li>
-                    <li><strong>Final Conclusion:</strong> Comprehensive answer based on all iterations</li>
+                    <li><strong>初始研究：</strong>{messages.ask?.initialResearch || '制定研究计划和初步发现'}</li>
+                    <li><strong>第1轮：</strong>{messages.ask?.iteration1 || '深入探索特定方面'}</li>
+                    <li><strong>第2轮：</strong>{messages.ask?.iteration2 || '调查剩余问题'}</li>
+                    <li><strong>第3-4轮：</strong>{messages.ask?.iterations3to4 || '深入研究复杂领域'}</li>
+                    <li><strong>最终结论：</strong>{messages.ask?.finalConclusion || '基于所有轮次的综合答案'}</li>
                   </ul>
-                  <p className="mt-1 text-xs italic">The AI automatically continues research until complete (up to 5 iterations)</p>
+                  <p className="mt-1 text-xs italic">{messages.ask?.autoResearchNote || 'AI会自动继续研究直到完成（最多5轮）'}</p>
                 </div>
               </div>
             </div>
             {deepResearch && (
               <div className="text-xs text-purple-600 dark:text-purple-400">
-                Multi-turn research process enabled
-                {researchIteration > 0 && !researchComplete && ` (iteration ${researchIteration})`}
-                {researchComplete && ` (complete)`}
+                {messages.ask?.multiTurnEnabled || '已启用多轮研究流程'}
+                {researchIteration > 0 && !researchComplete && ` (${messages.ask?.iteration?.replace('{n}', String(researchIteration)) || `第 ${researchIteration} 轮`})`}
+                {researchComplete && ` (${messages.ask?.complete || '已完成'})`}
               </div>
             )}
           </div>
@@ -779,12 +779,12 @@ const Ask: React.FC<AskProps> = ({
               <button
                 onClick={downloadresponse}
                 className="text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center gap-1"
-                title="Download response as markdown file"
+                title="下载响应为Markdown文件"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Download
+                {messages.ask?.download || '下载'}
               </button>
 
               {/* Clear button */}
@@ -793,7 +793,7 @@ const Ask: React.FC<AskProps> = ({
                 onClick={clearConversation}
                 className="text-xs text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
               >
-                Clear conversation
+                {messages.ask?.clearConversation || '清除对话'}
               </button>
             </div>
               </div>
@@ -812,9 +812,9 @@ const Ask: React.FC<AskProps> = ({
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {deepResearch
                   ? (researchIteration === 0
-                    ? "Planning research approach..."
-                    : `Research iteration ${researchIteration} in progress...`)
-                  : "Thinking..."}
+                    ? (messages.ask?.planningResearch || '规划研究方案...')
+                    : (messages.ask?.researchIterationInProgress?.replace('{n}', String(researchIteration)) || `第 ${researchIteration} 轮研究进行中...`))
+                  : (messages.ask?.thinking || '思考中...')}
               </span>
             </div>
             {deepResearch && (
@@ -824,11 +824,11 @@ const Ask: React.FC<AskProps> = ({
                     <>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                        <span>Creating research plan...</span>
+                        <span>{messages.ask?.creatingResearchPlan || '创建研究计划...'}</span>
                       </div>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        <span>Identifying key areas to investigate...</span>
+                        <span>{messages.ask?.identifyingKeyAreas || '识别关键调查领域...'}</span>
                       </div>
                     </>
                   )}
@@ -836,11 +836,11 @@ const Ask: React.FC<AskProps> = ({
                     <>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                        <span>Exploring first research area in depth...</span>
+                        <span>{messages.ask?.exploringFirstArea || '深入探索第一个研究领域...'}</span>
                       </div>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        <span>Analyzing code patterns and structures...</span>
+                        <span>{messages.ask?.analyzingCodePatterns || '分析代码模式和结构...'}</span>
                       </div>
                     </>
                   )}
@@ -848,11 +848,11 @@ const Ask: React.FC<AskProps> = ({
                     <>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
-                        <span>Investigating remaining questions...</span>
+                        <span>{messages.ask?.investigatingRemaining || '调查剩余问题...'}</span>
                       </div>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
-                        <span>Connecting findings from previous iterations...</span>
+                        <span>{messages.ask?.connectingFindings || '连接之前轮次的发现...'}</span>
                       </div>
                     </>
                   )}
@@ -860,11 +860,11 @@ const Ask: React.FC<AskProps> = ({
                     <>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></div>
-                        <span>Exploring deeper connections...</span>
+                        <span>{messages.ask?.exploringDeeperConnections || '探索更深层次的关联...'}</span>
                       </div>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                        <span>Analyzing complex patterns...</span>
+                        <span>{messages.ask?.analyzingComplexPatterns || '分析复杂模式...'}</span>
                       </div>
                     </>
                   )}
@@ -872,11 +872,11 @@ const Ask: React.FC<AskProps> = ({
                     <>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-teal-500 rounded-full mr-2"></div>
-                        <span>Refining research conclusions...</span>
+                        <span>{messages.ask?.refiningConclusions || '完善研究结论...'}</span>
                       </div>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-cyan-500 rounded-full mr-2"></div>
-                        <span>Addressing remaining edge cases...</span>
+                        <span>{messages.ask?.addressingEdgeCases || '处理剩余边缘情况...'}</span>
                       </div>
                     </>
                   )}
@@ -884,11 +884,11 @@ const Ask: React.FC<AskProps> = ({
                     <>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
-                        <span>Finalizing comprehensive answer...</span>
+                        <span>{messages.ask?.finalizingAnswer || '最终整合综合答案...'}</span>
                       </div>
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        <span>Synthesizing all research findings...</span>
+                        <span>{messages.ask?.synthesizingFindings || '综合所有研究发现...'}</span>
                       </div>
                     </>
                   )}

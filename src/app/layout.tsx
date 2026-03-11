@@ -4,8 +4,8 @@ import { ThemeProvider } from "next-themes";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 export const metadata: Metadata = {
-  title: "Deepwiki Open Source | Sheing Ng",
-  description: "Created by Sheing Ng",
+  title: "DeepWiki - AI驱动的代码文档",
+  description: "为代码仓库提供AI驱动的文档",
 };
 
 export default function RootLayout({

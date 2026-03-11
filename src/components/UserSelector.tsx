@@ -107,7 +107,7 @@ export default function UserSelector({
         }
       } catch (err) {
         console.error('Failed to fetch model configurations:', err);
-        setError('Failed to load model configurations. Using default options.');
+        setError('加载模型配置失败，使用默认选项。');
       } finally {
         setIsLoading(false);
       }
@@ -264,7 +264,7 @@ next.config.js
   if (isLoading) {
     return (
       <div className="flex flex-col gap-2">
-        <div className="text-sm text-[var(--muted)]">Loading model configurations...</div>
+        <div className="text-sm text-[var(--muted)]">加载模型配置中...</div>
       </div>
     );
   }

@@ -207,7 +207,7 @@ export default function ModelSelectionModal({
             {/* Authorization Code Input */}
             {isAuthLoading && (
                 <div className="mb-4 p-3 bg-[var(--background)]/50 rounded-md border border-[var(--border-color)] text-sm text-[var(--muted)]">
-                  Loading authentication status...
+                  正在加载认证状态...
                 </div>
             )}
             {!isAuthLoading && authRequired && (
@@ -221,7 +221,7 @@ export default function ModelSelectionModal({
                       value={authCode || ''}
                       onChange={(e) => setAuthCode?.(e.target.value)}
                       className="input-japanese block w-full px-3 py-2 text-sm rounded-md bg-transparent text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
-                      placeholder="Enter your authorization code"
+                      placeholder="请输入您的授权码"
                   />
                   <div className="flex items-center mt-2 text-xs text-[var(--muted)]">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-[var(--muted)]"

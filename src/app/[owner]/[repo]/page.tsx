@@ -1602,7 +1602,7 @@ IMPORTANT:
       if(authRequired && !authCode) {
         setIsLoading(false);
         console.error("Authorization code is required");
-        setError('Authorization code is required');
+        setError('授权码不能为空');
         return;
       }
 
@@ -1625,8 +1625,8 @@ IMPORTANT:
         if(response.status == 401) {
           setIsLoading(false);
           setLoadingMessage(undefined);
-          setError('Failed to validate the authorization code');
-          console.error('Failed to validate the authorization code')
+          setError('授权码验证失败');
+          console.error('授权码验证失败')
           return;
         }
       }
@@ -2076,7 +2076,7 @@ IMPORTANT:
 
               {/* Wiki Type Indicator */}
               <div className="mb-3 flex items-center text-xs text-[var(--muted)]">
-                <span className="mr-2">Wiki Type:</span>
+                <span className="mr-2">{messages.repoPage?.wikiTypeLabel || 'Wiki类型：'}</span>
                 <span className={`px-2 py-0.5 rounded-full ${isComprehensiveView
                   ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30'
                   : 'bg-[var(--background)] text-[var(--foreground)] border border-[var(--border-color)]'}`}>

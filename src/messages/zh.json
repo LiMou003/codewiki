@@ -15,7 +15,8 @@
     "fetchingStructure": "获取仓库结构...",
     "determiningStructure": "验证Wiki结构...",
     "clearingCache": "清除服务器缓存...",
-    "preparingDownload": "请等待，我们正在准备您的下载..."
+    "preparingDownload": "请等待，我们正在准备您的下载...",
+    "fetchingCache": "检查Wiki缓存..."
   },
   "home": {
     "welcome": "欢迎使用DeepWiki",
@@ -81,7 +82,18 @@
     "hideDefault": "隐藏默认配置",
     "viewDefault": "查看默认配置",
     "authorizationCode": "授权码",
-    "authorizationRequired": "生成wiki页面需要填写授权码"
+    "authorizationRequired": "生成wiki页面需要填写授权码",
+    "selectProvider": "选择提供商",
+    "selectModel": "选择模型",
+    "filterMode": "过滤模式",
+    "excludeMode": "排除路径",
+    "includeMode": "仅包含路径",
+    "excludeModeDescription": "指定要从处理中排除的路径（默认行为）",
+    "includeModeDescription": "仅指定要包含的路径，忽略所有其他路径",
+    "includedDirs": "要包含的目录",
+    "includedFiles": "要包含的文件",
+    "enterIncludedDirs": "输入要包含的目录，每行一个...",
+    "enterIncludedFiles": "输入要包含的文件，每行一个..."
   },
   "footer": {
     "copyright": "DeepWiki - 为代码仓库提供AI驱动的文档"
@@ -94,7 +106,35 @@
     "continueResearch": "继续研究",
     "viewPlan": "查看计划",
     "viewUpdates": "查看更新",
-    "viewConclusion": "查看结论"
+    "viewConclusion": "查看结论",
+    "title": "询问关于此仓库的问题",
+    "deepResearchTooltip": "深度研究进行多轮调查：",
+    "initialResearch": "初始研究：制定研究计划和初步发现",
+    "iteration1": "第1轮：深入探索特定方面",
+    "iteration2": "第2轮：调查剩余问题",
+    "iterations3to4": "第3-4轮：深入研究复杂领域",
+    "finalConclusion": "最终结论：基于所有轮次的综合答案",
+    "autoResearchNote": "AI会自动继续研究直到完成（最多5轮）",
+    "multiTurnEnabled": "已启用多轮研究流程",
+    "iteration": "第 {n} 轮",
+    "complete": "已完成",
+    "download": "下载",
+    "clearConversation": "清除对话",
+    "planningResearch": "规划研究方案...",
+    "researchIterationInProgress": "第 {n} 轮研究进行中...",
+    "thinking": "思考中...",
+    "creatingResearchPlan": "创建研究计划...",
+    "identifyingKeyAreas": "识别关键调查领域...",
+    "exploringFirstArea": "深入探索第一个研究领域...",
+    "analyzingCodePatterns": "分析代码模式和结构...",
+    "investigatingRemaining": "调查剩余问题...",
+    "connectingFindings": "连接之前轮次的发现...",
+    "exploringDeeperConnections": "探索更深层次的关联...",
+    "analyzingComplexPatterns": "分析复杂模式...",
+    "refiningConclusions": "完善研究结论...",
+    "addressingEdgeCases": "处理剩余边缘情况...",
+    "finalizingAnswer": "最终整合综合答案...",
+    "synthesizingFindings": "综合所有研究发现..."
   },
   "repoPage": {
     "refreshWiki": "刷新Wiki",
@@ -112,7 +152,11 @@
     "relatedFiles": "相关文件：",
     "relatedPages": "相关页面：",
     "selectPagePrompt": "从导航中选择一个页面以查看其内容",
-    "askAboutRepo": "询问关于此仓库的问题"
+    "askAboutRepo": "询问关于此仓库的问题",
+    "pagesCompleted": "{completed}/{total} 页面已完成",
+    "currentlyProcessing": "正在处理：",
+    "andMorePages": "...另外 {count} 页",
+    "wikiTypeLabel": "Wiki类型："
   },
   "nav": {
     "wikiProjects": "项目列表"
