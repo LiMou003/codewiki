@@ -55,13 +55,13 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))
 
     # Import the app here to ensure environment variables are set first
-    from api.api import app
+    from api.app import app
 
     logger.info(f"Starting Streaming API on port {port}")
 
     # Run the FastAPI app with uvicorn
     uvicorn.run(
-        "api.api:app",
+        "api.app:app",
         host="0.0.0.0",
         port=port,
         reload=is_development,
