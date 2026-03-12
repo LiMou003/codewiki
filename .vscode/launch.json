@@ -7,7 +7,7 @@
             "request": "launch",
             "module": "uvicorn",
             "args": [
-                "api.api:app",
+                "api.app:app",
                 "--reload",
                 "--port",
                 "8001"
