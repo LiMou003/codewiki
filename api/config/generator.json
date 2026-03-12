@@ -1,5 +1,5 @@
 {
-  "default_provider": "google",
+  "default_provider": "dashscope",
   "providers": {
     "dashscope": {
       "default_model": "qwen-plus",
@@ -10,6 +10,10 @@
           "top_p": 0.8
         },
         "qwen-turbo": {
+          "temperature": 0.7,
+          "top_p": 0.8
+        },
+        "qwen3.5-plus": {
           "temperature": 0.7,
           "top_p": 0.8
         },
@@ -110,33 +114,6 @@
         "anthropic/claude-3.5-sonnet": {
           "temperature": 0.7,
           "top_p": 0.8
-        }
-      }
-    },
-    "ollama": {
-      "default_model": "qwen3:1.7b",
-      "supportsCustomModel": true,
-      "models": {
-        "qwen3:1.7b": {
-          "options": {
-            "temperature": 0.7,
-            "top_p": 0.8,
-            "num_ctx": 32000
-          }
-        },
-        "llama3:8b": {
-          "options": {
-            "temperature": 0.7,
-            "top_p": 0.8,
-            "num_ctx": 8000
-          }
-        },
-        "qwen3:8b": {
-          "options": {
-            "temperature": 0.7,
-            "top_p": 0.8,
-            "num_ctx": 32000
-          }
         }
       }
     },
