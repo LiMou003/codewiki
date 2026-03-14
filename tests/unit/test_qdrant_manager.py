@@ -163,5 +163,83 @@ class TestChunkToPayload:
         assert results[0]["start_line"] == 5
 
 
+class TestGetPointCount:
+    """Tests for QdrantManager.get_point_count (no collection creation side-effects)."""
+
+    def test_returns_zero_when_no_qdrant_url(self, monkeypatch):
+        """In-memory mode: always returns 0 (can't share state across clients)."""
+        monkeypatch.delenv("QDRANT_URL", raising=False)
+        count = QdrantManager.get_point_count("some_repo")
+        assert count == 0
+
+    def test_returns_zero_for_nonexistent_collection(self, monkeypatch):
+        """Remote mode: collection does not exist yet → 0."""
+        # Patch QdrantClient to simulate a remote server with no matching collection
+        import sys
+        import types
+        from unittest.mock import MagicMock
+
+        monkeypatch.setenv("QDRANT_URL", "http://fake-qdrant:6333")
+
+        fake_client = MagicMock()
+        fake_client.get_collections.return_value.collections = []  # empty server
+
+        fake_qdrant_client_mod = types.ModuleType("qdrant_client")
+        fake_qdrant_client_mod.QdrantClient = MagicMock(return_value=fake_client)
+        monkeypatch.setitem(sys.modules, "qdrant_client", fake_qdrant_client_mod)
+
+        count = QdrantManager.get_point_count("nonexistent_repo")
+        assert count == 0
+        # Crucially, no collection was created
+        fake_client.create_collection.assert_not_called()
+
+    def test_returns_point_count_for_existing_collection(self, monkeypatch):
+        """Remote mode: collection exists → returns stored point count."""
+        import sys
+        import types
+        from unittest.mock import MagicMock
+
+        monkeypatch.setenv("QDRANT_URL", "http://fake-qdrant:6333")
+
+        existing_name = _collection_name("my_repo")
+        fake_col = MagicMock()
+        fake_col.name = existing_name
+
+        fake_collection_info = MagicMock()
+        fake_collection_info.points_count = 42
+
+        fake_client = MagicMock()
+        fake_client.get_collections.return_value.collections = [fake_col]
+        fake_client.get_collection.return_value = fake_collection_info
+
+        fake_qdrant_client_mod = types.ModuleType("qdrant_client")
+        fake_qdrant_client_mod.QdrantClient = MagicMock(return_value=fake_client)
+        monkeypatch.setitem(sys.modules, "qdrant_client", fake_qdrant_client_mod)
+
+        count = QdrantManager.get_point_count("my_repo")
+        assert count == 42
+        fake_client.create_collection.assert_not_called()
+
+    def test_returns_zero_on_connection_error(self, monkeypatch):
+        """Remote mode: connection failure returns 0 (graceful degradation)."""
+        import sys
+        import types
+        from unittest.mock import MagicMock
+
+        monkeypatch.setenv("QDRANT_URL", "http://unreachable:6333")
+
+        def raise_connection_error(*args, **kwargs):
+            raise ConnectionError("Connection refused")
+
+        fake_qdrant_client_mod = types.ModuleType("qdrant_client")
+        fake_qdrant_client_mod.QdrantClient = raise_connection_error
+        monkeypatch.setitem(sys.modules, "qdrant_client", fake_qdrant_client_mod)
+
+        count = QdrantManager.get_point_count("some_repo")
+        assert count == 0
+
+
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
