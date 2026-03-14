@@ -260,104 +260,44 @@ Give me the numbered list with brief descriptions for each slide. Be creative bu
       // Add tokens if available
       addTokensToRequestBody(planRequestBody, token, repoInfo.type, providerParam, modelParam, isCustomModelParam, customModelParam, language);
 
-      // Use WebSocket for communication
+      // Use HTTP streaming for communication
       let planContent = '';
 
-      try {
-        // Create WebSocket URL from the server base URL
-        const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
-        const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws')? serverBaseUrl.replace(/^https/, 'wss'): serverBaseUrl.replace(/^http/, 'ws');
-        const wsUrl = `${wsBaseUrl}/ws/chat`;
+      const planResponse = await fetch(`/api/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(planRequestBody)
+      });
 
-        // Create a new WebSocket connection
-        const ws = new WebSocket(wsUrl);
-
-        // Create a single promise that handles the entire WebSocket lifecycle
-        await new Promise<void>((resolve, reject) => {
-          let isResolved = false;
-
-          // If the connection doesn't open or complete within 10 seconds, fall back to HTTP
-          const timeout = setTimeout(() => {
-            if (!isResolved) {
-              isResolved = true;
-              // Try to close the WebSocket if it's still open
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.close();
-              }
-              reject(new Error('WebSocket connection timeout'));
-            }
-          }, 10000);
-
-          // Set up event handlers
-          ws.onopen = () => {
-            console.log('WebSocket connection established for slide plan');
-            // Send the request as JSON
-            ws.send(JSON.stringify(planRequestBody));
-            // Don't resolve here, wait for the complete response
-          };
-
-          ws.onmessage = (event) => {
-            const chunk = event.data;
-            planContent += chunk;
-          };
-
-          ws.onclose = () => {
-            clearTimeout(timeout);
-            console.log('WebSocket connection closed for slide plan');
-            if (!isResolved) {
-              isResolved = true;
-              resolve();
-            }
-          };
-
-          ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            if (!isResolved) {
-              isResolved = true;
-              reject(new Error('WebSocket connection failed'));
-            }
-          };
-        });
-      } catch (wsError) {
-        console.error('WebSocket error, falling back to HTTP:', wsError);
-
-        // Fall back to HTTP if WebSocket fails
-        const planResponse = await fetch(`/api/chat/stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(planRequestBody)
-        });
-
-        if (!planResponse.ok) {
-          throw new Error(`Error generating slide plan: ${planResponse.status}`);
-        }
-
-        // Process the plan response
-        planContent = '';
-        const planReader = planResponse.body?.getReader();
-        const planDecoder = new TextDecoder();
-
-        if (!planReader) {
-          throw new Error('Failed to get plan response reader');
-        }
-
-        try {
-          while (true) {
-            const { done, value } = await planReader.read();
-            if (done) break;
-            const chunk = planDecoder.decode(value, { stream: true });
-            planContent += chunk;
-          }
-          // Ensure final decoding
-          const finalChunk = planDecoder.decode();
-          planContent += finalChunk;
-        } catch (readError) {
-          console.error('Error reading plan stream:', readError);
-          throw new Error('Error processing plan response stream');
-        }
+      if (!planResponse.ok) {
+        throw new Error(`Error generating slide plan: ${planResponse.status}`);
       }
+
+      // Process the plan response
+      const planReader = planResponse.body?.getReader();
+      const planDecoder = new TextDecoder();
+
+      if (!planReader) {
+        throw new Error('Failed to get plan response reader');
+      }
+
+      try {
+        while (true) {
+          const { done, value } = await planReader.read();
+          if (done) break;
+          const chunk = planDecoder.decode(value, { stream: true });
+          planContent += chunk;
+        }
+        // Ensure final decoding
+        const finalChunk = planDecoder.decode();
+        planContent += finalChunk;
+      } catch (readError) {
+        console.error('Error reading plan stream:', readError);
+        throw new Error('Error processing plan response stream');
+      }
+
 
       // Log the plan content for debugging
       console.log("Received slide plan:", planContent);
@@ -536,104 +476,44 @@ Please return ONLY the HTML with no markdown formatting or code blocks. Just the
         // Add tokens if available
         addTokensToRequestBody(slideRequestBody, token, repoInfo.type, providerParam, modelParam, isCustomModelParam, customModelParam, language);
 
-        // Use WebSocket for communication
+        // Use HTTP streaming for communication
         let slideContent = '';
 
-        try {
-          // Create WebSocket URL from the server base URL
-          const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
-          const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws')? serverBaseUrl.replace(/^https/, 'wss'): serverBaseUrl.replace(/^http/, 'ws');
-          const wsUrl = `${wsBaseUrl}/ws/chat`;
+        const slideResponse = await fetch(`/api/chat/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(slideRequestBody)
+        });
 
-          // Create a new WebSocket connection
-          const ws = new WebSocket(wsUrl);
-
-          // Create a single promise that handles the entire WebSocket lifecycle
-          await new Promise<void>((resolve, reject) => {
-            let isResolved = false;
-
-            // If the connection doesn't open or complete within 10 seconds, fall back to HTTP
-            const timeout = setTimeout(() => {
-              if (!isResolved) {
-                isResolved = true;
-                // Try to close the WebSocket if it's still open
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.close();
-                }
-                reject(new Error('WebSocket connection timeout'));
-              }
-            }, 10000);
-
-            // Set up event handlers
-            ws.onopen = () => {
-              console.log(`WebSocket connection established for slide ${slideCounter}`);
-              // Send the request as JSON
-              ws.send(JSON.stringify(slideRequestBody));
-              // Don't resolve here, wait for the complete response
-            };
-
-            ws.onmessage = (event) => {
-              const chunk = event.data;
-              slideContent += chunk;
-            };
-
-            ws.onclose = () => {
-              clearTimeout(timeout);
-              console.log(`WebSocket connection closed for slide ${slideCounter}`);
-              if (!isResolved) {
-                isResolved = true;
-                resolve();
-              }
-            };
-
-            ws.onerror = (error) => {
-              console.error('WebSocket error:', error);
-              if (!isResolved) {
-                isResolved = true;
-                reject(new Error('WebSocket connection failed'));
-              }
-            };
-          });
-        } catch (wsError) {
-          console.error('WebSocket error, falling back to HTTP:', wsError);
-
-          // Fall back to HTTP if WebSocket fails
-          const slideResponse = await fetch(`/api/chat/stream`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(slideRequestBody)
-          });
-
-          if (!slideResponse.ok) {
-            throw new Error(`Error generating slide ${slideCounter}: ${slideResponse.status}`);
-          }
-
-          // Process the slide response
-          slideContent = '';
-          const slideReader = slideResponse.body?.getReader();
-          const slideDecoder = new TextDecoder();
-
-          if (!slideReader) {
-            throw new Error(`Failed to get reader for slide ${slideCounter}`);
-          }
-
-          try {
-            while (true) {
-              const { done, value } = await slideReader.read();
-              if (done) break;
-              const chunk = slideDecoder.decode(value, { stream: true });
-              slideContent += chunk;
-            }
-            // Ensure final decoding
-            const finalChunk = slideDecoder.decode();
-            slideContent += finalChunk;
-          } catch (readError) {
-            console.error(`Error reading slide ${slideCounter} stream:`, readError);
-            throw new Error(`Error processing slide ${slideCounter} response stream`);
-          }
+        if (!slideResponse.ok) {
+          throw new Error(`Error generating slide ${slideCounter}: ${slideResponse.status}`);
         }
+
+        // Process the slide response
+        const slideReader = slideResponse.body?.getReader();
+        const slideDecoder = new TextDecoder();
+
+        if (!slideReader) {
+          throw new Error(`Failed to get reader for slide ${slideCounter}`);
+        }
+
+        try {
+          while (true) {
+            const { done, value } = await slideReader.read();
+            if (done) break;
+            const chunk = slideDecoder.decode(value, { stream: true });
+            slideContent += chunk;
+          }
+          // Ensure final decoding
+          const finalChunk = slideDecoder.decode();
+          slideContent += finalChunk;
+        } catch (readError) {
+          console.error(`Error reading slide ${slideCounter} stream:`, readError);
+          throw new Error(`Error processing slide ${slideCounter} response stream`);
+        }
+
 
         // Extract HTML content - look for content between HTML tags or code blocks
         let slideHtml = '';
