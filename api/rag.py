@@ -1,7 +1,7 @@
 import logging
 import weakref
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from typing import Any, List, Tuple, Dict
 from uuid import uuid4
 
@@ -39,14 +39,68 @@ class CustomConversation:
 
 # Import other adalflow components
 from adalflow.components.retriever.faiss_retriever import FAISSRetriever
+from adalflow.core.types import RetrieverOutput
 from api.config import configs
-from api.data_pipeline import DatabaseManager
+from api.data_pipeline import DatabaseManager, _get_embedding_vector
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Maximum token limit for embedding models
 MAX_INPUT_TOKENS = 7500  # Safe threshold below 8192 token limit
+
+
+# ---------------------------------------------------------------------------
+# Qdrant-based retriever helpers
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _SimpleDocument:
+    """Lightweight document object returned by the Qdrant retriever."""
+    text: str
+    meta_data: dict = dataclass_field(default_factory=dict)
+
+
+def _qdrant_search(qdrant_manager, embedder, query: str, top_k: int) -> RetrieverOutput:
+    """
+    Perform a vector search against Qdrant and return a ``RetrieverOutput``
+    compatible with the existing RAG pipeline.
+
+    The documents stored in the output have ``.text`` and ``.meta_data``
+    attributes so that callers can access ``file_path``, ``function_name``,
+    ``class_name``, etc.
+    """
+    query_vec = _get_embedding_vector(embedder, query)
+    if not query_vec:
+        logger.warning("Could not embed query for Qdrant search; returning empty result")
+        return RetrieverOutput(doc_indices=[], doc_scores=[], documents=[])
+
+    hits = qdrant_manager.search(query_vector=query_vec, top_k=top_k)
+
+    docs = []
+    scores = []
+    for hit in hits:
+        score = hit.pop("_score", 0.0)
+        text = hit.pop("text", "")
+        # Enrich meta_data with structural info stored in the payload
+        meta = {
+            "file_path":     hit.get("file_path", ""),
+            "function_name": hit.get("function_name"),
+            "class_name":    hit.get("class_name"),
+            "chunk_type":    hit.get("chunk_type", ""),
+            "language":      hit.get("language", ""),
+            "start_line":    hit.get("start_line"),
+            "end_line":      hit.get("end_line"),
+            "is_code":       hit.get("is_code", False),
+        }
+        docs.append(_SimpleDocument(text=text, meta_data=meta))
+        scores.append(score)
+
+    return RetrieverOutput(
+        doc_indices=list(range(len(docs))),
+        doc_scores=scores,
+        documents=docs,
+    )
 
 class Memory(adal.core.component.DataComponent):
     """Simple conversation management with a list of dialog turns."""
@@ -349,6 +403,11 @@ IMPORTANT FORMATTING RULES:
         Prepare the retriever for a repository.
         Will load database from local storage if available.
 
+        After building the FAISS index, the method also builds a Qdrant index
+        (using Tree-sitter for code files).  When Qdrant is available, it is
+        used as the primary retriever because it preserves function-level
+        metadata; FAISS serves as the fallback.
+
         Args:
             repo_url_or_path: URL or local path to the repository
             access_token: Optional access token for private repositories
@@ -378,6 +437,16 @@ IMPORTANT FORMATTING RULES:
             raise ValueError("No valid documents with embeddings found. Cannot create retriever.")
 
         logger.info(f"Using {len(self.transformed_docs)} documents with valid embeddings for retrieval")
+
+        # Check if Qdrant index was built by the DatabaseManager
+        self._qdrant_manager = getattr(self.db_manager, "qdrant_manager", None)
+        if self._qdrant_manager is not None and self._qdrant_manager.count() > 0:
+            logger.info(
+                "Qdrant index available (%d chunks). Qdrant will be used as the primary retriever.",
+                self._qdrant_manager.count(),
+            )
+        else:
+            self._qdrant_manager = None
 
         try:
             # Use the appropriate embedder for retrieval
@@ -417,6 +486,11 @@ IMPORTANT FORMATTING RULES:
         """
         Process a query using RAG.
 
+        When a Qdrant index is available (built during ``prepare_retriever``),
+        it is used as the primary retriever because it provides function-level
+        metadata (function names, class names, line numbers, etc.).
+        FAISS is used as the fallback.
+
         Args:
             query: The user's query
 
@@ -424,6 +498,26 @@ IMPORTANT FORMATTING RULES:
             Tuple of (RAGAnswer, retrieved_documents)
         """
         try:
+            # Try Qdrant first (richer metadata, Tree-sitter based chunks)
+            qdrant_manager = getattr(self, "_qdrant_manager", None)
+            if qdrant_manager is not None:
+                try:
+                    top_k = configs.get("retriever", {}).get("top_k", 20)
+                    retrieve_embedder = (
+                        self.query_embedder if self.is_ollama_embedder else self.embedder
+                    )
+                    result = _qdrant_search(qdrant_manager, retrieve_embedder, query, top_k)
+                    if result.documents:
+                        logger.info(
+                            "Qdrant retrieved %d chunks for query", len(result.documents)
+                        )
+                        return [result]
+                except Exception as qdrant_exc:
+                    logger.warning(
+                        "Qdrant retrieval failed (%s); falling back to FAISS", qdrant_exc
+                    )
+
+            # FAISS fallback
             retrieved_documents = self.retriever(query)
 
             # Fill in the documents

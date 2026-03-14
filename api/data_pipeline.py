@@ -17,6 +17,13 @@ import requests
 from requests.exceptions import RequestException
 
 from api.tools.embedder import get_embedder
+from api.code_splitter import (
+    TreeSitterCodeSplitter,
+    EXTENSION_TO_LANGUAGE,
+    split_text_fixed,
+    CodeChunk,
+)
+from api.qdrant_manager import QdrantManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -449,6 +456,105 @@ def transform_documents_and_save_to_db(
     db.save_state(filepath=db_path)
     return db
 
+
+def _get_embedding_vector(embedder, text: str) -> list:
+    """
+    Obtain a single embedding vector for *text* using the provided *embedder*.
+
+    Returns an empty list on failure.
+    """
+    try:
+        result = embedder([text])
+        # adalflow embedders return a list of EmbedderOutput; extract the vector
+        if result and hasattr(result[0], "embedding"):
+            vec = result[0].embedding
+        elif result and hasattr(result[0], "data") and result[0].data:
+            vec = result[0].data[0].embedding
+        else:
+            vec = list(result[0]) if result else []
+        return list(vec) if vec is not None else []
+    except Exception as exc:
+        logger.warning("Failed to embed text snippet: %s", exc)
+        return []
+
+
+def split_and_index_to_qdrant(
+    documents: List[Document],
+    qdrant_manager: "QdrantManager",
+    embedder_type: str = None,
+    chunk_size: int = 1500,
+    chunk_overlap: int = 200,
+) -> int:
+    """
+    Split *documents* using Tree-sitter (for code) / fixed-length (for text),
+    embed each chunk, and upsert them into *qdrant_manager*.
+
+    Args:
+        documents:       Raw ``Document`` objects returned by
+                         ``read_all_documents``.
+        qdrant_manager:  An initialised ``QdrantManager`` instance that will
+                         receive the upserted points.
+        embedder_type:   Embedder type string (passed to ``get_embedder``).
+        chunk_size:      Target chunk size in characters (code splitter).
+        chunk_overlap:   Overlap in characters between adjacent chunks.
+
+    Returns:
+        Total number of chunks upserted.
+    """
+    from api.config import get_embedder_type
+
+    if embedder_type is None:
+        embedder_type = get_embedder_type()
+
+    embedder = get_embedder(embedder_type=embedder_type)
+    splitter = TreeSitterCodeSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
+
+    all_payloads: List[dict] = []
+    all_vectors: List[list] = []
+
+    for doc in documents:
+        meta = doc.meta_data or {}
+        file_path = meta.get("file_path", "")
+        is_code = meta.get("is_code", False)
+        ext = meta.get("type", "")
+
+        if is_code:
+            language = EXTENSION_TO_LANGUAGE.get(ext.lower(), ext.lower() or "unknown")
+            chunks: List[CodeChunk] = splitter.split_code(
+                doc.text, file_path, language
+            )
+        else:
+            chunks = split_text_fixed(
+                doc.text, file_path,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+
+        for chunk in chunks:
+            if not chunk.text.strip():
+                continue
+            vector = _get_embedding_vector(embedder, chunk.text)
+            if not vector:
+                continue
+            payload = QdrantManager.chunk_to_payload(chunk)
+            # Carry over any extra metadata from the original document
+            payload["is_code"] = is_code
+            payload["is_implementation"] = meta.get("is_implementation", False)
+            all_payloads.append(payload)
+            all_vectors.append(vector)
+
+    if all_payloads:
+        qdrant_manager.upsert_chunks(all_payloads, all_vectors)
+        logger.info(
+            "Indexed %d chunks into Qdrant collection '%s'",
+            len(all_payloads),
+            qdrant_manager.collection_name,
+        )
+    return len(all_payloads)
+
+
 def get_github_file_content(repo_url: str, file_path: str, access_token: str = None) -> str:
     """
     Retrieves the content of a file from a GitHub repository using the GitHub API.
@@ -712,12 +818,18 @@ def get_file_content(repo_url: str, file_path: str, repo_type: str = None, acces
 class DatabaseManager:
     """
     Manages the creation, loading, transformation, and persistence of LocalDB instances.
+
+    When a Qdrant server is reachable (or no ``QDRANT_URL`` is set, which
+    activates the in-memory mode), the pipeline additionally indexes every
+    chunk into a Qdrant collection so that function names and other structural
+    metadata are preserved alongside the embeddings.
     """
 
     def __init__(self):
         self.db = None
         self.repo_url_or_path = None
         self.repo_paths = None
+        self.qdrant_manager: "QdrantManager | None" = None
 
     def prepare_database(self, repo_url_or_path: str, repo_type: str = None, access_token: str = None,
                          embedder_type: str = None, is_ollama_embedder: bool = None,
@@ -758,6 +870,7 @@ class DatabaseManager:
         self.db = None
         self.repo_url_or_path = None
         self.repo_paths = None
+        self.qdrant_manager = None
 
     def _extract_repo_name_from_url(self, repo_url_or_path: str, repo_type: str) -> str:
         # Extract owner and repo name to create unique identifier
@@ -834,6 +947,18 @@ class DatabaseManager:
         """
         Prepare the indexed database for the repository.
 
+        The method builds **two** indexes:
+
+        1. A FAISS-based ``LocalDB`` (legacy, kept for backward compatibility).
+        2. A Qdrant collection where each chunk is stored with rich metadata
+           (function name, class name, start/end line numbers, language, …).
+           This index is built using Tree-sitter for code files and a
+           fixed-length character splitter for non-code files.
+
+        When ``QDRANT_URL`` is not set the Qdrant data is kept in-memory
+        (useful for development and testing); set ``QDRANT_URL`` to point to
+        a persistent Qdrant instance in production.
+
         Args:
             embedder_type (str, optional): Embedder type to use ('openai', 'google', 'ollama').
                                          If None, will be determined from configuration.
@@ -889,6 +1014,20 @@ class DatabaseManager:
                             "Existing database contains no usable embeddings. Rebuilding embeddings..."
                         )
                     else:
+                        # Rebuild the Qdrant index from the raw (pre-split) docs
+                        # so that function-level metadata is available even when
+                        # the FAISS cache already exists.
+                        raw_docs = read_all_documents(
+                            self.repo_paths["save_repo_dir"],
+                            embedder_type=embedder_type,
+                            excluded_dirs=excluded_dirs,
+                            excluded_files=excluded_files,
+                            included_dirs=included_dirs,
+                            included_files=included_files,
+                        )
+                        self._build_qdrant_index(
+                            raw_docs, embedder_type=embedder_type
+                        )
                         return documents
             except Exception as e:
                 logger.error(f"Error loading existing database: {e}")
@@ -910,7 +1049,71 @@ class DatabaseManager:
         logger.info(f"Total documents: {len(documents)}")
         transformed_docs = self.db.get_transformed_data(key="split_and_embed")
         logger.info(f"Total transformed documents: {len(transformed_docs)}")
+
+        # Build Qdrant index with Tree-sitter splitting
+        self._build_qdrant_index(documents, embedder_type=embedder_type)
+
         return transformed_docs
+
+    def _build_qdrant_index(
+        self,
+        documents: List[Document],
+        embedder_type: str = None,
+    ) -> None:
+        """
+        Build (or rebuild) the Qdrant index for *documents*.
+
+        Uses Tree-sitter for code files and fixed-length splitting for
+        non-code files.  Skips silently on any error so that the FAISS
+        fallback remains usable.
+        """
+        if not documents:
+            return
+
+        try:
+            from api.config import get_embedder_type
+
+            if embedder_type is None:
+                embedder_type = get_embedder_type()
+
+            # Determine embedding vector size from a probe embedding
+            embedder = get_embedder(embedder_type=embedder_type)
+            probe = _get_embedding_vector(embedder, "probe")
+            if not probe:
+                logger.warning("Could not determine embedding size; skipping Qdrant indexing")
+                return
+
+            vector_size = len(probe)
+            repo_name = os.path.basename(self.repo_paths["save_repo_dir"])
+
+            self.qdrant_manager = QdrantManager(
+                repo_name=repo_name,
+                vector_size=vector_size,
+            )
+            # Always rebuild so the Qdrant collection stays in sync with the
+            # source tree (avoids stale data after a re-index).
+            self.qdrant_manager.recreate_collection()
+
+            # Average characters per word used to convert the word-based
+            # text_splitter chunk_size setting into a character count.
+            AVG_CHARS_PER_WORD = 6
+
+            chunk_size = configs.get("text_splitter", {}).get("chunk_size", 1500)
+            # text_splitter uses words; convert roughly to characters
+            chunk_size_chars = chunk_size * AVG_CHARS_PER_WORD
+
+            total = split_and_index_to_qdrant(
+                documents,
+                self.qdrant_manager,
+                embedder_type=embedder_type,
+                chunk_size=chunk_size_chars,
+                chunk_overlap=chunk_size_chars // AVG_CHARS_PER_WORD,
+            )
+            logger.info("Qdrant index built: %d chunks stored", total)
+        except Exception as exc:
+            logger.error("Failed to build Qdrant index: %s", exc)
+
+
 
     def prepare_retriever(self, repo_url_or_path: str, repo_type: str = None, access_token: str = None):
         """
