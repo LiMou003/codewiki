@@ -56,14 +56,8 @@ def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool 
             embedder_type = get_embedder_type()
 
         # Choose encoding based on embedder type
-        if embedder_type == 'ollama':
-            # Ollama typically uses cl100k_base encoding
-            encoding = tiktoken.get_encoding("cl100k_base")
-        elif embedder_type == 'google':
-            # Google uses similar tokenization to GPT models for rough estimation
-            encoding = tiktoken.get_encoding("cl100k_base")
-        elif embedder_type == 'bedrock':
-            # Bedrock embedding models vary; use a common GPT-like encoding for rough estimation
+        if embedder_type in ('ollama', 'google', 'bedrock', 'dashscope'):
+            # Non-OpenAI embedders: use cl100k_base for a reasonable token estimate
             encoding = tiktoken.get_encoding("cl100k_base")
         else:  # OpenAI or default
             # Use OpenAI embedding model encoding

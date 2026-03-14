@@ -8,6 +8,13 @@
       "encoding_format": "float"
     }
   },
+  "embedder_dashscope": {
+    "client_class": "DashscopeClient",
+    "batch_size": 25,
+    "model_kwargs": {
+      "model": "qwen3-vl-embedding"
+    }
+  },
   "embedder_google": {
     "client_class": "GoogleEmbedderClient",
     "batch_size": 100,
