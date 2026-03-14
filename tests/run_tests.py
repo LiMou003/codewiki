@@ -96,8 +96,7 @@ def check_environment():
     
     # Check for API keys
     api_keys = {
-        "GOOGLE_API_KEY": "Google AI embedder tests",
-        "OPENAI_API_KEY": "OpenAI integration tests"
+        "DASHSCOPE_API_KEY": "Dashscope/Qwen integration tests"
     }
     
     for key, purpose in api_keys.items():
@@ -112,12 +111,6 @@ def check_environment():
         print("✅ adalflow available")
     except ImportError:
         print("❌ adalflow not available - install with: pip install adalflow")
-    
-    try:
-        import google.generativeai
-        print("✅ google-generativeai available")
-    except ImportError:
-        print("❌ google-generativeai not available - install with: pip install google-generativeai")
     
     try:
         import requests

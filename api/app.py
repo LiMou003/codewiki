@@ -7,7 +7,6 @@ from typing import List, Optional, Dict, Any, Literal
 import json
 from datetime import datetime
 from pydantic import BaseModel, Field
-import google.generativeai as genai
 import asyncio
 
 # Configure logging
@@ -180,7 +179,7 @@ async def get_model_config():
 
         # Create providers from the config file
         providers = []
-        default_provider = configs.get("default_provider", "google")
+        default_provider = configs.get("default_provider", "dashscope")
 
         # Add provider configuration based on config.py
         for provider_id, provider_config in configs["providers"].items():
@@ -213,15 +212,15 @@ async def get_model_config():
         return ModelConfig(
             providers=[
                 Provider(
-                    id="google",
-                    name="Google",
+                    id="dashscope",
+                    name="Dashscope",
                     supportsCustomModel=True,
                     models=[
-                        Model(id="gemini-2.5-flash", name="Gemini 2.5 Flash")
+                        Model(id="qwen-plus", name="Qwen Plus")
                     ]
                 )
             ],
-            defaultProvider="google"
+            defaultProvider="dashscope"
         )
 
 @app.post("/export/wiki")
