@@ -267,14 +267,38 @@ class TreeSitterCodeSplitter:
         try:
             parser = self._get_parser(language)
             if parser is None:
+                logger.debug(
+                    "No Tree-sitter parser available for language '%s', "
+                    "falling back to fixed-length split: %s",
+                    language, file_path,
+                )
                 return self._fixed_length_split(code, file_path, language)
+            logger.debug("Splitting '%s' (language=%s) with Tree-sitter", file_path, language)
             code_bytes = code.encode("utf-8")
             tree = parser.parse(code_bytes)
             chunks = self._extract_chunks(tree, code_bytes, file_path, language)
             if not chunks:
                 # If no top-level functions/classes found, treat the whole file
                 # as a single module chunk (still bounded by chunk_size).
+                logger.debug(
+                    "Tree-sitter found no chunks in '%s', falling back to fixed-length split",
+                    file_path,
+                )
                 chunks = self._fixed_length_split(code, file_path, language)
+            else:
+                logger.debug(
+                    "Tree-sitter extracted %d chunk(s) from '%s':", len(chunks), file_path
+                )
+                for i, chunk in enumerate(chunks):
+                    name = chunk.function_name or chunk.class_name or "(unnamed)"
+                    logger.debug(
+                        "  [%d] type=%-12s  name=%-30s  lines=%d-%d",
+                        i + 1,
+                        chunk.chunk_type,
+                        name,
+                        chunk.start_line,
+                        chunk.end_line,
+                    )
             return chunks
         except Exception as exc:
             logger.warning("Tree-sitter split failed for %s: %s", file_path, exc)
