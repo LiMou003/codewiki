@@ -4,7 +4,7 @@ This is the backend API for DeepWiki, providing smart code analysis and AI-power
 
 ## ✨ Features
 
-- **Streaming AI Responses**: Real-time responses using Google's Generative AI (Gemini)
+- **Streaming AI Responses**: Real-time responses using Dashscope Qwen models
 - **Smart Code Analysis**: Automatically analyzes GitHub repositories
 - **RAG Implementation**: Retrieval Augmented Generation for context-aware responses
 - **Local Storage**: All data stored locally - no cloud dependencies
@@ -25,66 +25,32 @@ Create a `.env` file in the project root:
 
 ```
 # Required API Keys
-GOOGLE_API_KEY=your_google_api_key        # Required for Google Gemini models
-OPENAI_API_KEY=your_openai_api_key        # Required for embeddings and OpenAI models
+DASHSCOPE_API_KEY=your_dashscope_api_key  # Required for Qwen models and embeddings
 
-# Optional API Keys
-OPENROUTER_API_KEY=your_openrouter_api_key  # Required only if using OpenRouter models
-
-# AWS Bedrock Configuration
-AWS_ACCESS_KEY_ID=your_aws_access_key_id      # Required for AWS Bedrock models
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key     # Required for AWS Bedrock models
-AWS_REGION=us-east-1                          # Optional, defaults to us-east-1
-AWS_ROLE_ARN=your_aws_role_arn                # Optional, for role-based authentication
-
-# OpenAI API Configuration
-OPENAI_BASE_URL=https://custom-api-endpoint.com/v1  # Optional, for custom OpenAI API endpoints
-
-# Ollama host
-OLLAMA_HOST=https://your_ollama_host"  # Optional: Add Ollama host if not local. default: http://localhost:11434
+# Optional Dashscope Configuration
+DASHSCOPE_WORKSPACE_ID=your_workspace_id  # Optional, for workspace-scoped requests
 
 # Server Configuration
 PORT=8001  # Optional, defaults to 8001
 ```
 
-If you're not using Ollama mode, you need to configure an OpenAI API key for embeddings. Other API keys are only required when configuring and using models from the corresponding providers.
-
 > 💡 **Where to get these keys:**
-> - Get a Google API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-> - Get an OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-> - Get an OpenRouter API key from [OpenRouter](https://openrouter.ai/keys)
-> - Get AWS credentials from [AWS IAM Console](https://console.aws.amazon.com/iam/)
+> - Get a Dashscope API key from [Alibaba Cloud DashScope](https://dashscope.aliyun.com/)
 
 #### Advanced Environment Configuration
 
 ##### Provider-Based Model Selection
-DeepWiki supports multiple LLM providers. The environment variables above are required depending on which providers you want to use:
+DeepWiki uses Dashscope as the only provider for both text generation and embeddings:
 
-- **Google Gemini**: Requires `GOOGLE_API_KEY`
-- **OpenAI**: Requires `OPENAI_API_KEY`
-- **OpenRouter**: Requires `OPENROUTER_API_KEY`
-- **AWS Bedrock**: Requires `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-- **Ollama**: No API key required (runs locally)
-
-##### Custom OpenAI API Endpoints
-The `OPENAI_BASE_URL` variable allows you to specify a custom endpoint for the OpenAI API. This is useful for:
-
-- Enterprise users with private API channels
-- Organizations using self-hosted or custom-deployed LLM services
-- Integration with third-party OpenAI API-compatible services
-
-**Example:** you can use the endpoint which support the OpenAI protocol provided by any organization
-```
-OPENAI_BASE_URL=https://custom-openai-endpoint.com/v1
-```
+- **Dashscope (Qwen)**: Requires `DASHSCOPE_API_KEY`
 
 ##### Configuration Files
-DeepWiki now uses JSON configuration files to manage various system components instead of hardcoded values:
+DeepWiki uses JSON configuration files to manage various system components instead of hardcoded values:
 
 1. **`generator.json`**: Configuration for text generation models
    - Located in `api/config/` by default
-   - Defines available model providers (Google, OpenAI, OpenRouter, AWS Bedrock, Ollama)
-   - Specifies default and available models for each provider
+   - Defines available Qwen models via Dashscope provider
+   - Specifies default and available models
    - Contains model-specific parameters like temperature and top_p
 
 2. **`embedder.json`**: Configuration for embedding models and text processing
@@ -121,7 +87,7 @@ The API will be available at `http://localhost:8001`
 When you provide a GitHub repository URL, the API:
 - Clones the repository locally (if not already cloned)
 - Reads all files in the repository
-- Creates embeddings for the files using OpenAI
+- Creates embeddings for the files using Dashscope (text-embedding-v3)
 - Stores the embeddings in a local database
 
 ### 2. Smart Retrieval (RAG)

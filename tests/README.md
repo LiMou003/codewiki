@@ -7,10 +7,7 @@ This directory contains all tests for the DeepWiki project, organized by type an
 ```
 tests/
 ├── unit/                 # Unit tests - test individual components in isolation
-│   ├── test_google_embedder.py          # Tests for Google AI embedder client
-│   └── test_google_embedder_fix.py      # Tests for embedding response parsing fix
 ├── integration/          # Integration tests - test component interactions
-│   └── test_full_integration.py         # Full pipeline integration test
 ├── api/                  # API tests - test HTTP endpoints
 │   └── test_api.py                      # API endpoint tests
 └── run_tests.py         # Test runner script
@@ -40,13 +37,6 @@ python tests/run_tests.py --api
 
 ### Individual Test Files
 ```bash
-# Unit tests
-python tests/unit/test_google_embedder.py
-python tests/unit/test_google_embedder_fix.py
-
-# Integration tests
-python tests/integration/test_full_integration.py
-
 # API tests
 python tests/api/test_api.py
 ```
@@ -54,15 +44,12 @@ python tests/api/test_api.py
 ## Test Requirements
 
 ### Environment Variables
-- `GOOGLE_API_KEY`: Required for Google AI embedder tests
-- `OPENAI_API_KEY`: Required for some integration tests
-- `DEEPWIKI_EMBEDDER_TYPE`: Set to 'google' for Google embedder tests
+- `DASHSCOPE_API_KEY`: Required for Dashscope/Qwen model tests
 
 ### Dependencies
 All test dependencies are included in the main project requirements:
 - `python-dotenv`: For loading environment variables
 - `adalflow`: Core framework for embeddings
-- `google-generativeai`: Google AI API client
 - `requests`: For API testing
 
 ## Test Categories
@@ -112,9 +99,7 @@ sys.path.insert(0, str(project_root))
 Make sure you have a `.env` file in the project root with the required API keys:
 
 ```
-GOOGLE_API_KEY=your_google_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
-DEEPWIKI_EMBEDDER_TYPE=google
+DASHSCOPE_API_KEY=your_dashscope_api_key_here
 ```
 
 ### Server Dependencies

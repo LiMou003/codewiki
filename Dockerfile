@@ -87,10 +87,10 @@ if [ -f .env ]; then\n\
 fi\n\
 \n\
 # Check for required environment variables\n\
-if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ]; then\n\
-  echo "Warning: OPENAI_API_KEY and/or GOOGLE_API_KEY environment variables are not set."\n\
-  echo "These are required for DeepWiki to function properly."\n\
-  echo "You can provide them via a mounted .env file or as environment variables when running the container."\n\
+if [ -z "$DASHSCOPE_API_KEY" ]; then\n\
+  echo "Warning: DASHSCOPE_API_KEY environment variable is not set."\n\
+  echo "This is required for DeepWiki to function properly."\n\
+  echo "You can provide it via a mounted .env file or as an environment variable when running the container."\n\
 fi\n\
 \n\
 # Start the API server in the background with the configured port\n\
