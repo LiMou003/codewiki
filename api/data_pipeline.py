@@ -973,26 +973,34 @@ class DatabaseManager:
 
         repo_name = os.path.basename(self.repo_paths["save_repo_dir"])
 
-        # Check whether the Qdrant collection already has data so we can skip
-        # an expensive re-index when the repository hasn't changed.
+        # Step 1: Check whether the Qdrant collection already has data by
+        # name, WITHOUT creating the collection as a side-effect.  Only when
+        # the collection is absent or empty do we proceed with the expensive
+        # Tree-sitter splitting + vectorisation pipeline.
         try:
-            embedder = get_embedder(embedder_type=embedder_type)
-            probe = _get_embedding_vector(embedder, "probe")
-            if probe:
-                vector_size = len(probe)
-                temp_manager = QdrantManager(repo_name=repo_name, vector_size=vector_size)
-                if temp_manager.count() > 0:
-                    logger.info(
-                        "Qdrant collection '%s' already contains %d chunks; skipping re-indexing.",
-                        temp_manager.collection_name,
-                        temp_manager.count(),
+            existing_count = QdrantManager.get_point_count(repo_name)
+            if existing_count > 0:
+                logger.info(
+                    "Qdrant collection for '%s' already contains %d chunks; "
+                    "skipping re-indexing.",
+                    repo_name,
+                    existing_count,
+                )
+                # Connect to the existing collection (creates the manager
+                # object but does not re-create the underlying collection).
+                embedder = get_embedder(embedder_type=embedder_type)
+                probe = _get_embedding_vector(embedder, "probe")
+                if probe:
+                    self.qdrant_manager = QdrantManager(
+                        repo_name=repo_name, vector_size=len(probe)
                     )
-                    self.qdrant_manager = temp_manager
-                    return []
+                return []
         except Exception as exc:
             logger.warning("Could not check existing Qdrant collection: %s", exc)
 
-        # Read raw documents and build Qdrant index from scratch.
+        # Step 2: Read raw documents from the repository.  This is done
+        # *before* creating the Qdrant collection so that we only create
+        # (or recreate) the collection once we know there is data to index.
         logger.info("Building Qdrant index for '%s'...", repo_name)
         documents = read_all_documents(
             self.repo_paths["save_repo_dir"],
@@ -1015,8 +1023,12 @@ class DatabaseManager:
         """
         Build (or rebuild) the Qdrant index for *documents*.
 
-        Uses Tree-sitter for code files and fixed-length splitting for
-        non-code files.
+        The operation order matches the required vectorisation workflow:
+
+        1. Create the Qdrant collection (or recreate a stale empty one).
+        2. Split documents using Tree-sitter (code) / fixed-length (text).
+        3. Vectorise each chunk via the configured embedder.
+        4. Store the resulting vectors in the Qdrant collection.
         """
         if not documents:
             return
@@ -1037,12 +1049,14 @@ class DatabaseManager:
             vector_size = len(probe)
             repo_name = os.path.basename(self.repo_paths["save_repo_dir"])
 
+            # Step 1: Create (or recreate) the Qdrant collection before any
+            # splitting / vectorisation work takes place.  ``recreate_collection``
+            # is used here so that any stale empty collection left over from a
+            # previously interrupted indexing run is cleanly replaced.
             self.qdrant_manager = QdrantManager(
                 repo_name=repo_name,
                 vector_size=vector_size,
             )
-            # Always rebuild so the Qdrant collection stays in sync with the
-            # source tree (avoids stale data after a re-index).
             self.qdrant_manager.recreate_collection()
 
             # Average characters per word used to convert the word-based
@@ -1053,6 +1067,7 @@ class DatabaseManager:
             # text_splitter uses words; convert roughly to characters
             chunk_size_chars = chunk_size * AVG_CHARS_PER_WORD
 
+            # Steps 2-4: split (Tree-sitter / fixed-length), vectorise, store.
             total = split_and_index_to_qdrant(
                 documents,
                 self.qdrant_manager,

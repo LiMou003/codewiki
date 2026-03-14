@@ -254,6 +254,84 @@ class QdrantManager:
         return self.collection_name in existing
 
     # ------------------------------------------------------------------
+    # Class-level helpers (no collection creation side-effects)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_point_count(
+        cls,
+        repo_name: str,
+        qdrant_url: Optional[str] = None,
+        qdrant_api_key: Optional[str] = None,
+    ) -> int:
+        """Return the number of points stored for *repo_name* without creating
+        the collection if it does not yet exist.
+
+        Uses a temporary client that never calls ``_ensure_collection``, so
+        the method has **no side-effects** on the Qdrant server.
+
+        For in-memory instances (``QDRANT_URL`` is not set) this always
+        returns ``0`` because a new ``QdrantClient(":memory:")`` always
+        starts with an empty store and cannot see data held by a different
+        in-process client.
+
+        Args:
+            repo_name:      Repository identifier used to derive the
+                            collection name (same as the ``repo_name``
+                            constructor argument).
+            qdrant_url:     Override the ``QDRANT_URL`` environment variable.
+            qdrant_api_key: Override the ``QDRANT_API_KEY`` environment
+                            variable.
+
+        Returns:
+            Number of points currently stored in the collection, or ``0``
+            if the collection does not exist, Qdrant is unreachable, or the
+            instance is in-memory.
+        """
+        url = qdrant_url or os.environ.get("QDRANT_URL")
+        if not url:
+            # In-memory clients are isolated; there is no way to inspect
+            # another client's store without creating a new empty one.
+            # Returning 0 ensures we always (re)build for in-memory instances.
+            logger.debug(
+                "No QDRANT_URL set; assuming in-memory instance has no "
+                "existing data for repo '%s'.",
+                repo_name,
+            )
+            return 0
+
+        api_key = qdrant_api_key or os.environ.get("QDRANT_API_KEY")
+        collection_name = _collection_name(repo_name)
+
+        try:
+            from qdrant_client import QdrantClient
+
+            client = QdrantClient(url=url, api_key=api_key or None)
+            existing = {c.name for c in client.get_collections().collections}
+            if collection_name not in existing:
+                logger.info(
+                    "Qdrant collection '%s' does not exist yet.",
+                    collection_name,
+                )
+                return 0
+
+            info = client.get_collection(collection_name)
+            count = info.points_count or 0
+            logger.info(
+                "Qdrant collection '%s' already has %d point(s).",
+                collection_name,
+                count,
+            )
+            return count
+        except Exception as exc:
+            logger.warning(
+                "Could not query Qdrant for collection '%s': %s",
+                collection_name,
+                exc,
+            )
+            return 0
+
+    # ------------------------------------------------------------------
     # Convenience: build from CodeChunk list
     # ------------------------------------------------------------------
 
