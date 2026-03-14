@@ -817,16 +817,16 @@ def get_file_content(repo_url: str, file_path: str, repo_type: str = None, acces
 
 class DatabaseManager:
     """
-    Manages the creation, loading, transformation, and persistence of LocalDB instances.
+    Manages the creation and persistence of the Qdrant vector index.
 
-    When a Qdrant server is reachable (or no ``QDRANT_URL`` is set, which
-    activates the in-memory mode), the pipeline additionally indexes every
-    chunk into a Qdrant collection so that function names and other structural
-    metadata are preserved alongside the embeddings.
+    All code chunks and their embeddings are stored in a Qdrant collection.
+    When ``QDRANT_URL`` is set (e.g. ``http://localhost:6333``), a remote
+    Qdrant server is used and the index persists across restarts.  When the
+    variable is not set, an in-process in-memory instance is used (suitable
+    for testing and development only).
     """
 
     def __init__(self):
-        self.db = None
         self.repo_url_or_path = None
         self.repo_paths = None
         self.qdrant_manager: "QdrantManager | None" = None
@@ -867,7 +867,6 @@ class DatabaseManager:
         """
         Reset the database to its initial state.
         """
-        self.db = None
         self.repo_url_or_path = None
         self.repo_paths = None
         self.qdrant_manager = None
@@ -941,119 +940,78 @@ class DatabaseManager:
             logger.error(f"Failed to create repository structure: {e}")
             raise
 
-    def prepare_db_index(self, embedder_type: str = None, is_ollama_embedder: bool = None, 
+    def prepare_db_index(self, embedder_type: str = None, is_ollama_embedder: bool = None,
                         excluded_dirs: List[str] = None, excluded_files: List[str] = None,
                         included_dirs: List[str] = None, included_files: List[str] = None) -> List[Document]:
         """
-        Prepare the indexed database for the repository.
+        Prepare the Qdrant vector index for the repository.
 
-        The method builds **two** indexes:
+        Reads the source files, splits them into chunks using Tree-sitter (for
+        code) or a fixed-length splitter (for text), embeds each chunk, and
+        upserts the result into a Qdrant collection.
 
-        1. A FAISS-based ``LocalDB`` (legacy, kept for backward compatibility).
-        2. A Qdrant collection where each chunk is stored with rich metadata
-           (function name, class name, start/end line numbers, language, …).
-           This index is built using Tree-sitter for code files and a
-           fixed-length character splitter for non-code files.
+        If the Qdrant collection for this repository already exists and
+        contains data, re-indexing is skipped so that repeated calls are fast.
 
         When ``QDRANT_URL`` is not set the Qdrant data is kept in-memory
         (useful for development and testing); set ``QDRANT_URL`` to point to
-        a persistent Qdrant instance in production.
+        a persistent Qdrant instance in production (default port 6333).
 
         Args:
             embedder_type (str, optional): Embedder type to use ('openai', 'google', 'ollama').
                                          If None, will be determined from configuration.
             is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                               If None, will be determined from configuration.
             excluded_dirs (List[str], optional): List of directories to exclude from processing
             excluded_files (List[str], optional): List of file patterns to exclude from processing
             included_dirs (List[str], optional): List of directories to include exclusively
             included_files (List[str], optional): List of file patterns to include exclusively
 
         Returns:
-            List[Document]: List of Document objects
+            List[Document]: Always an empty list (Qdrant is the sole store).
         """
-        def _embedding_vector_length(doc: Document) -> int:
-            vector = getattr(doc, "vector", None)
-            if vector is None:
-                return 0
-            try:
-                if hasattr(vector, "shape"):
-                    if len(vector.shape) == 0:
-                        return 0
-                    return int(vector.shape[-1])
-                if hasattr(vector, "__len__"):
-                    return int(len(vector))
-            except Exception:
-                return 0
-            return 0
-
         # Handle backward compatibility
         if embedder_type is None and is_ollama_embedder is not None:
             embedder_type = 'ollama' if is_ollama_embedder else None
-        # check the database
-        if self.repo_paths and os.path.exists(self.repo_paths["save_db_file"]):
-            logger.info("Loading existing database...")
-            try:
-                self.db = LocalDB.load_state(self.repo_paths["save_db_file"])
-                documents = self.db.get_transformed_data(key="split_and_embed")
-                if documents:
-                    lengths = [_embedding_vector_length(doc) for doc in documents]
-                    non_empty = sum(1 for n in lengths if n > 0)
-                    empty = len(lengths) - non_empty
-                    sample_sizes = sorted({n for n in lengths if n > 0})[:3]
+
+        from api.config import get_embedder_type
+        if embedder_type is None:
+            embedder_type = get_embedder_type()
+
+        repo_name = os.path.basename(self.repo_paths["save_repo_dir"])
+
+        # Check whether the Qdrant collection already has data so we can skip
+        # an expensive re-index when the repository hasn't changed.
+        try:
+            embedder = get_embedder(embedder_type=embedder_type)
+            probe = _get_embedding_vector(embedder, "probe")
+            if probe:
+                vector_size = len(probe)
+                temp_manager = QdrantManager(repo_name=repo_name, vector_size=vector_size)
+                if temp_manager.count() > 0:
                     logger.info(
-                        "Loaded %s documents from existing database (embeddings: %s non-empty, %s empty; sample_dims=%s)",
-                        len(documents),
-                        non_empty,
-                        empty,
-                        sample_sizes,
+                        "Qdrant collection '%s' already contains %d chunks; skipping re-indexing.",
+                        temp_manager.collection_name,
+                        temp_manager.count(),
                     )
+                    self.qdrant_manager = temp_manager
+                    return []
+        except Exception as exc:
+            logger.warning("Could not check existing Qdrant collection: %s", exc)
 
-                    if non_empty == 0:
-                        logger.warning(
-                            "Existing database contains no usable embeddings. Rebuilding embeddings..."
-                        )
-                    else:
-                        # Rebuild the Qdrant index from the raw (pre-split) docs
-                        # so that function-level metadata is available even when
-                        # the FAISS cache already exists.
-                        raw_docs = read_all_documents(
-                            self.repo_paths["save_repo_dir"],
-                            embedder_type=embedder_type,
-                            excluded_dirs=excluded_dirs,
-                            excluded_files=excluded_files,
-                            included_dirs=included_dirs,
-                            included_files=included_files,
-                        )
-                        self._build_qdrant_index(
-                            raw_docs, embedder_type=embedder_type
-                        )
-                        return documents
-            except Exception as e:
-                logger.error(f"Error loading existing database: {e}")
-                # Continue to create a new database
-
-        # prepare the database
-        logger.info("Creating new database...")
+        # Read raw documents and build Qdrant index from scratch.
+        logger.info("Building Qdrant index for '%s'...", repo_name)
         documents = read_all_documents(
             self.repo_paths["save_repo_dir"],
             embedder_type=embedder_type,
             excluded_dirs=excluded_dirs,
             excluded_files=excluded_files,
             included_dirs=included_dirs,
-            included_files=included_files
+            included_files=included_files,
         )
-        self.db = transform_documents_and_save_to_db(
-            documents, self.repo_paths["save_db_file"], embedder_type=embedder_type
-        )
-        logger.info(f"Total documents: {len(documents)}")
-        transformed_docs = self.db.get_transformed_data(key="split_and_embed")
-        logger.info(f"Total transformed documents: {len(transformed_docs)}")
+        logger.info("Total source documents: %d", len(documents))
 
-        # Build Qdrant index with Tree-sitter splitting
         self._build_qdrant_index(documents, embedder_type=embedder_type)
-
-        return transformed_docs
+        return []
 
     def _build_qdrant_index(
         self,
@@ -1064,8 +1022,7 @@ class DatabaseManager:
         Build (or rebuild) the Qdrant index for *documents*.
 
         Uses Tree-sitter for code files and fixed-length splitting for
-        non-code files.  Skips silently on any error so that the FAISS
-        fallback remains usable.
+        non-code files.
         """
         if not documents:
             return

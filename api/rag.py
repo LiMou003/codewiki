@@ -38,7 +38,6 @@ class CustomConversation:
         self.dialog_turns.append(dialog_turn)
 
 # Import other adalflow components
-from adalflow.components.retriever.faiss_retriever import FAISSRetriever
 from adalflow.core.types import RetrieverOutput
 from api.config import configs
 from api.data_pipeline import DatabaseManager, _get_embedding_vector
@@ -298,9 +297,8 @@ IMPORTANT FORMATTING RULES:
 
 
     def initialize_db_manager(self):
-        """Initialize the database manager with local storage"""
+        """Initialize the database manager."""
         self.db_manager = DatabaseManager()
-        self.transformed_docs = []
 
     def _validate_and_filter_embeddings(self, documents: List) -> List:
         """
@@ -400,13 +398,11 @@ IMPORTANT FORMATTING RULES:
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None,
                       included_dirs: List[str] = None, included_files: List[str] = None):
         """
-        Prepare the retriever for a repository.
-        Will load database from local storage if available.
+        Prepare the Qdrant retriever for a repository.
 
-        After building the FAISS index, the method also builds a Qdrant index
-        (using Tree-sitter for code files).  When Qdrant is available, it is
-        used as the primary retriever because it preserves function-level
-        metadata; FAISS serves as the fallback.
+        Loads (or builds) the Qdrant vector index for the given repository and
+        stores a reference to the ``QdrantManager`` so that ``call()`` can use
+        it for retrieval.
 
         Args:
             repo_url_or_path: URL or local path to the repository
@@ -418,7 +414,7 @@ IMPORTANT FORMATTING RULES:
         """
         self.initialize_db_manager()
         self.repo_url_or_path = repo_url_or_path
-        self.transformed_docs = self.db_manager.prepare_database(
+        self.db_manager.prepare_database(
             repo_url_or_path,
             type,
             access_token,
@@ -426,70 +422,28 @@ IMPORTANT FORMATTING RULES:
             excluded_dirs=excluded_dirs,
             excluded_files=excluded_files,
             included_dirs=included_dirs,
-            included_files=included_files
+            included_files=included_files,
         )
-        logger.info(f"Loaded {len(self.transformed_docs)} documents for retrieval")
 
-        # Validate and filter embeddings to ensure consistent sizes
-        self.transformed_docs = self._validate_and_filter_embeddings(self.transformed_docs)
-
-        if not self.transformed_docs:
-            raise ValueError("No valid documents with embeddings found. Cannot create retriever.")
-
-        logger.info(f"Using {len(self.transformed_docs)} documents with valid embeddings for retrieval")
-
-        # Check if Qdrant index was built by the DatabaseManager
         self._qdrant_manager = getattr(self.db_manager, "qdrant_manager", None)
-        if self._qdrant_manager is not None and self._qdrant_manager.count() > 0:
-            logger.info(
-                "Qdrant index available (%d chunks). Qdrant will be used as the primary retriever.",
-                self._qdrant_manager.count(),
+        if self._qdrant_manager is None or self._qdrant_manager.count() == 0:
+            raise ValueError(
+                "Qdrant index is empty or unavailable. "
+                "Ensure Qdrant is running and the repository was indexed successfully."
             )
-        else:
-            self._qdrant_manager = None
 
-        try:
-            # Use the appropriate embedder for retrieval
-            retrieve_embedder = self.query_embedder if self.is_ollama_embedder else self.embedder
-            self.retriever = FAISSRetriever(
-                **configs["retriever"],
-                embedder=retrieve_embedder,
-                documents=self.transformed_docs,
-                document_map_func=lambda doc: doc.vector,
-            )
-            logger.info("FAISS retriever created successfully")
-        except Exception as e:
-            logger.error(f"Error creating FAISS retriever: {str(e)}")
-            # Try to provide more specific error information
-            if "All embeddings should be of the same size" in str(e):
-                logger.error("Embedding size validation failed. This suggests there are still inconsistent embedding sizes.")
-                # Log embedding sizes for debugging
-                sizes = []
-                for i, doc in enumerate(self.transformed_docs[:10]):  # Check first 10 docs
-                    if hasattr(doc, 'vector') and doc.vector is not None:
-                        try:
-                            if isinstance(doc.vector, list):
-                                size = len(doc.vector)
-                            elif hasattr(doc.vector, 'shape'):
-                                size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
-                            elif hasattr(doc.vector, '__len__'):
-                                size = len(doc.vector)
-                            else:
-                                size = "unknown"
-                            sizes.append(f"doc_{i}: {size}")
-                        except Exception:
-                            sizes.append(f"doc_{i}: error")
-                logger.error(f"Sample embedding sizes: {', '.join(sizes)}")
-            raise
+        logger.info(
+            "Qdrant retriever ready: %d chunks available for '%s'.",
+            self._qdrant_manager.count(),
+            repo_url_or_path,
+        )
 
     def call(self, query: str, language: str = "en") -> Tuple[List]:
         """
         Process a query using RAG.
 
-        When a Qdrant index is available (built during ``prepare_retriever``),
-        it is used as the primary retriever because it provides function-level
-        metadata (function names, class names, line numbers, etc.).
-        FAISS is used as the fallback.
+        Retrieves relevant code chunks from the Qdrant vector index and uses
+        them as context for the language-model generator.
 
         Args:
             query: The user's query
@@ -498,35 +452,20 @@ IMPORTANT FORMATTING RULES:
             Tuple of (RAGAnswer, retrieved_documents)
         """
         try:
-            # Try Qdrant first (richer metadata, Tree-sitter based chunks)
             qdrant_manager = getattr(self, "_qdrant_manager", None)
-            if qdrant_manager is not None:
-                try:
-                    top_k = configs.get("retriever", {}).get("top_k", 20)
-                    retrieve_embedder = (
-                        self.query_embedder if self.is_ollama_embedder else self.embedder
-                    )
-                    result = _qdrant_search(qdrant_manager, retrieve_embedder, query, top_k)
-                    if result.documents:
-                        logger.info(
-                            "Qdrant retrieved %d chunks for query", len(result.documents)
-                        )
-                        return [result]
-                except Exception as qdrant_exc:
-                    logger.warning(
-                        "Qdrant retrieval failed (%s); falling back to FAISS", qdrant_exc
-                    )
+            if qdrant_manager is None:
+                raise ValueError(
+                    "Qdrant retriever is not initialized. Call prepare_retriever() first."
+                )
 
-            # FAISS fallback
-            retrieved_documents = self.retriever(query)
-
-            # Fill in the documents
-            retrieved_documents[0].documents = [
-                self.transformed_docs[doc_index]
-                for doc_index in retrieved_documents[0].doc_indices
-            ]
-
-            return retrieved_documents
+            top_k = configs.get("retriever", {}).get("top_k", 20)
+            retrieve_embedder = (
+                self.query_embedder if self.is_ollama_embedder else self.embedder
+            )
+            result = _qdrant_search(qdrant_manager, retrieve_embedder, query, top_k)
+            if result.documents:
+                logger.info("Qdrant retrieved %d chunks for query", len(result.documents))
+            return [result]
 
         except Exception as e:
             logger.error(f"Error in RAG call: {str(e)}")
