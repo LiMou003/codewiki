@@ -1,4 +1,18 @@
 services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   deepwiki:
     build:
       context: .
@@ -14,9 +28,13 @@ services:
       - SERVER_BASE_URL=http://localhost:${PORT:-8001}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FILE_PATH=${LOG_FILE_PATH:-api/logs/application.log}
+      - QDRANT_URL=http://qdrant:6333
     volumes:
       - ~/.adalflow:/root/.adalflow      # Persist repository and embedding data
       - ./api/logs:/app/api/logs          # Persist log files across container restarts
+    depends_on:
+      qdrant:
+        condition: service_healthy
     # Resource limits for docker-compose up (not Swarm mode)
     mem_limit: 6g
     mem_reservation: 2g
@@ -27,3 +45,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+volumes:
+  qdrant_data:
