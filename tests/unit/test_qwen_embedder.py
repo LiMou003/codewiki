@@ -36,6 +36,20 @@ logger = logging.getLogger(__name__)
 import pytest
 
 
+def _make_mock_dashscope_response(embeddings=None):
+    """Build a minimal mock of dashscope DashScopeAPIResponse for embeddings."""
+    if embeddings is None:
+        embeddings = [{"text_index": 0, "embedding": [0.1] * 1024}]
+
+    response = MagicMock()
+    response.status_code = 200
+    response.message = ""
+    # response.output is accessed like a dict via .get()
+    response.output.get = lambda key, default=None: embeddings if key == "embeddings" else default
+    response.usage = MagicMock()
+    return response
+
+
 class TestQwenEmbedderConfig:
     """Test that the Qwen/DashScope embedder configuration is present and correct."""
 
@@ -152,50 +166,53 @@ class TestQwenEmbedderFactory:
 class TestQwenEmbedderClient:
     """Test DashscopeClient embedding call with qwen3-vl-embedding (mocked)."""
 
-    def _make_mock_embedding_response(self):
-        """Build a minimal mock of openai.types.CreateEmbeddingResponse."""
-        embedding_data = MagicMock()
-        embedding_data.embedding = [0.1] * 1024
-        embedding_data.index = 0
-
-        response = MagicMock()
-        response.data = [embedding_data]
-        response.model = "qwen3-vl-embedding"
-        response.usage = MagicMock(prompt_tokens=5, total_tokens=5)
-        return response
-
-    def test_dashscope_embedding_call_uses_correct_model(self):
-        """DashscopeClient.call() for EMBEDDER should pass model kwarg through to API."""
+    def test_convert_inputs_to_api_kwargs_formats_dashscope_input(self):
+        """convert_inputs_to_api_kwargs should produce [{'text': ...}] dicts for EMBEDDER."""
         from api.dashscope_client import DashscopeClient
         from adalflow.core.types import ModelType
 
-        mock_response = self._make_mock_embedding_response()
+        with patch("api.dashscope_client.DashscopeClient.init_sync_client") as mock_init:
+            mock_init.return_value = MagicMock()
+            client = DashscopeClient()
+
+        api_kwargs = client.convert_inputs_to_api_kwargs(
+            input=["测试文本", "second text"],
+            model_kwargs={"model": "qwen3-vl-embedding"},
+            model_type=ModelType.EMBEDDER,
+        )
+        assert api_kwargs.get("model") == "qwen3-vl-embedding"
+        assert api_kwargs["input"] == [{"text": "测试文本"}, {"text": "second text"}]
+
+    def test_dashscope_embedding_call_uses_multimodal_embedding(self):
+        """DashscopeClient.call() for EMBEDDER should use dashscope.MultiModalEmbedding.call()."""
+        from api.dashscope_client import DashscopeClient
+        from adalflow.core.types import ModelType
+
+        mock_response = _make_mock_dashscope_response()
 
         with patch("api.dashscope_client.DashscopeClient.init_sync_client") as mock_init:
-            mock_sync = MagicMock()
-            mock_sync.embeddings.create.return_value = mock_response
-            mock_init.return_value = mock_sync
-
+            mock_init.return_value = MagicMock()
             client = DashscopeClient()
-            api_kwargs = client.convert_inputs_to_api_kwargs(
-                input="测试文本",
-                model_kwargs={"model": "qwen3-vl-embedding"},
-                model_type=ModelType.EMBEDDER,
-            )
-            assert api_kwargs.get("model") == "qwen3-vl-embedding"
 
+        api_kwargs = client.convert_inputs_to_api_kwargs(
+            input="测试文本",
+            model_kwargs={"model": "qwen3-vl-embedding"},
+            model_type=ModelType.EMBEDDER,
+        )
+        assert api_kwargs.get("model") == "qwen3-vl-embedding"
+
+        with patch("api.dashscope_client.MultiModalEmbedding.call", return_value=mock_response) as mock_call:
             result = client.call(api_kwargs, ModelType.EMBEDDER)
-            # Should have called embeddings.create
-            mock_sync.embeddings.create.assert_called_once()
-            call_kwargs = mock_sync.embeddings.create.call_args[1]
+            mock_call.assert_called_once()
+            call_kwargs = mock_call.call_args[1]
             assert call_kwargs.get("model") == "qwen3-vl-embedding"
+            assert call_kwargs["input"] == [{"text": "测试文本"}]
 
     def test_dashscope_embedding_response_parsed(self):
         """parse_embedding_response must return EmbedderOutput with non-empty data."""
         from api.dashscope_client import DashscopeClient
-        from adalflow.core.types import ModelType
 
-        mock_response = self._make_mock_embedding_response()
+        mock_response = _make_mock_dashscope_response()
 
         with patch("api.dashscope_client.DashscopeClient.init_sync_client") as mock_init:
             mock_init.return_value = MagicMock()
@@ -206,6 +223,24 @@ class TestQwenEmbedderClient:
         assert result.data is not None
         assert len(result.data) > 0, "Parsed response should have at least one embedding"
         assert result.error is None
+        assert len(result.data[0].embedding) == 1024
+
+    def test_dashscope_embedding_error_response(self):
+        """parse_embedding_response should return error EmbedderOutput on non-200 status."""
+        from api.dashscope_client import DashscopeClient
+
+        error_response = MagicMock()
+        error_response.status_code = 400
+        error_response.message = "Bad Request"
+
+        with patch("api.dashscope_client.DashscopeClient.init_sync_client") as mock_init:
+            mock_init.return_value = MagicMock()
+            client = DashscopeClient()
+
+        result = client.parse_embedding_response(error_response)
+        assert result is not None
+        assert result.error is not None
+        assert result.data == []
 
 
 class TestQwenCountTokens:

@@ -38,6 +38,9 @@ from openai.types import (
 )
 from openai.types.chat import ChatCompletionChunk, ChatCompletion
 
+import dashscope
+from dashscope import MultiModalEmbedding, AioMultiModalEmbedding
+
 from adalflow.core.model_client import ModelClient
 from adalflow.core.types import (
     ModelType,
@@ -284,19 +287,33 @@ class DashscopeClient(ModelClient):
             return CompletionUsage(completion_tokens=0, prompt_tokens=0, total_tokens=0)
 
     def parse_embedding_response(
-        self, response: CreateEmbeddingResponse
+        self, response: Any
     ) -> EmbedderOutput:
-        """Parse the embedding response to a EmbedderOutput."""
-        # Add detailed debugging
+        """Parse the DashScope MultiModalEmbedding response to an EmbedderOutput.
+
+        The native dashscope response has the structure:
+            response.status_code  -> int (200 on success)
+            response.output.embeddings  -> list of embedding objects
+            response.output.embeddings[i].embedding  -> list[float]
+            response.output.embeddings[i].text_index  -> int
+        """
         try:
-            result = parse_embedding_response(response)
-            if result.data:
-                log.info(f"🔍 Number of embeddings: {len(result.data)}")
-                if len(result.data) > 0:
-                    log.info(f"🔍 First embedding length: {len(result.data[0].embedding) if hasattr(result.data[0], 'embedding') else 'N/A'}")
-            else:
-                log.warning(f"🔍 No embedding data found in result")
-            return result
+            if response.status_code != 200:
+                error_msg = f"DashScope API error {response.status_code}: {response.message}"
+                log.error(f"🔍 {error_msg}")
+                return EmbedderOutput(data=[], error=error_msg, raw_response=response)
+
+            raw_embeddings = response.output.get("embeddings", [])
+            data = []
+            for item in raw_embeddings:
+                idx = item.get("text_index", len(data))
+                vec = item.get("embedding", [])
+                data.append(Embedding(embedding=vec, index=idx))
+
+            log.info(f"🔍 Number of embeddings: {len(data)}")
+            if data:
+                log.info(f"🔍 First embedding length: {len(data[0].embedding)}")
+            return EmbedderOutput(data=data, error=None, raw_response=response)
         except Exception as e:
             log.error(f"🔍 Error parsing DashScope embedding response: {e}")
             log.error(f"🔍 Raw response details: {repr(response)}")
@@ -336,43 +353,37 @@ class DashscopeClient(ModelClient):
             return api_kwargs
             
         elif model_type == ModelType.EMBEDDER:
-            # Convert Documents to text strings for embedding
-            processed_input = input
+            # Convert inputs to dashscope MultiModalEmbedding format: [{'text': '...'}]
+            texts: List[str] = []
             if isinstance(input, list):
-                # Extract text from Document objects
-                processed_input = []
                 for item in input:
                     if hasattr(item, 'text'):
-                        # It's a Document object, extract text
-                        processed_input.append(item.text)
+                        texts.append(item.text)
                     elif isinstance(item, str):
-                        # It's already a string
-                        processed_input.append(item)
+                        texts.append(item)
                     else:
-                        # Try to convert to string
-                        processed_input.append(str(item))
+                        texts.append(str(item))
             elif hasattr(input, 'text'):
-                # Single Document object
-                processed_input = input.text
+                texts = [input.text]
             elif isinstance(input, str):
-                # Single string
-                processed_input = input
+                texts = [input]
             else:
-                # Convert to string as fallback
-                processed_input = str(input)
-            
+                texts = [str(input)]
+
+            # dashscope MultiModalEmbedding expects input as list of {'text': ...} dicts
+            dashscope_input = [{'text': t} for t in texts]
+
             api_kwargs = {
-                "input": processed_input,
+                "input": dashscope_input,
                 **final_model_kwargs
             }
-            
-            # Add workspace ID to headers if available
-            workspace_id = getattr(self.sync_client, '_workspace_id', None) or getattr(self.async_client, '_workspace_id', None)
+
+            # Pass workspace ID if available
+            workspace_id = (self._workspace_id or
+                            os.getenv(self._env_workspace_id_name))
             if workspace_id:
-                if 'extra_headers' not in api_kwargs:
-                    api_kwargs['extra_headers'] = {}
-                api_kwargs['extra_headers']['X-DashScope-WorkSpace'] = workspace_id
-            
+                api_kwargs['workspace'] = workspace_id
+
             return api_kwargs
         else:
             raise ValueError(f"model_type {model_type} is not supported")
@@ -405,79 +416,85 @@ class DashscopeClient(ModelClient):
             else:
                 return self.parse_chat_completion(completion)
         elif model_type == ModelType.EMBEDDER:
-            # Extract input texts from api_kwargs
-            texts = api_kwargs.get("input", [])
-            
-            if not texts:
+            # api_kwargs["input"] is already formatted as [{'text': ...}] by
+            # convert_inputs_to_api_kwargs.
+            dashscope_input = api_kwargs.get("input", [])
+
+            if not dashscope_input:
                 log.warning("😭 No input texts provided")
                 return EmbedderOutput(data=[], error="No input texts provided", raw_response=None)
-            
-            # Ensure texts is a list
-            if isinstance(texts, str):
-                texts = [texts]
-            
-            # Filter out empty or None texts - following HuggingFace client pattern
-            valid_texts = []
+
+            # Filter out entries whose 'text' field is empty
+            valid_input = []
             valid_indices = []
-            for i, text in enumerate(texts):
-                if text and isinstance(text, str) and text.strip():
-                    valid_texts.append(text)
+            for i, item in enumerate(dashscope_input):
+                text = item.get("text", "") if isinstance(item, dict) else ""
+                if text and text.strip():
+                    valid_input.append(item)
                     valid_indices.append(i)
                 else:
-                    log.warning(f"🔍 Skipping empty or invalid text at index {i}: type={type(text)}, length={len(text) if hasattr(text, '__len__') else 'N/A'}, repr={repr(text)[:100]}")
-            
-            if not valid_texts:
+                    log.warning(f"🔍 Skipping empty text at index {i}")
+
+            if not valid_input:
                 log.error("😭 No valid texts found after filtering")
                 return EmbedderOutput(data=[], error="No valid texts found after filtering", raw_response=None)
-            
-            if len(valid_texts) != len(texts):
-                filtered_count = len(texts) - len(valid_texts)
-                log.warning(f"🔍 Filtered out {filtered_count} empty/invalid texts out of {len(texts)} total texts")
-            
-            # Create modified api_kwargs with only valid texts
-            filtered_api_kwargs = api_kwargs.copy()
-            filtered_api_kwargs["input"] = valid_texts
-            
-            log.info(f"🔍 DashScope embedding API call with {len(valid_texts)} valid texts out of {len(texts)} total")
-            
+
+            if len(valid_input) != len(dashscope_input):
+                log.warning(
+                    f"🔍 Filtered out {len(dashscope_input) - len(valid_input)} "
+                    f"empty/invalid texts out of {len(dashscope_input)} total texts"
+                )
+
+            model = api_kwargs.get("model", "")
+            workspace = api_kwargs.get("workspace")
+            log.info(f"🔍 DashScope MultiModalEmbedding call with {len(valid_input)} texts")
+
             try:
-                response = self.sync_client.embeddings.create(**filtered_api_kwargs)
-                log.info(f"🔍 DashScope API call successful, response type: {type(response)}")
+                response = MultiModalEmbedding.call(
+                    model=model,
+                    input=valid_input,
+                    api_key=self._api_key or os.getenv(self._env_api_key_name),
+                    workspace=workspace,
+                )
+                log.info(f"🔍 DashScope API call successful, status: {response.status_code}")
                 result = self.parse_embedding_response(response)
-                
-                # If we filtered texts, we need to create embeddings for the original indices
-                if len(valid_texts) != len(texts):
-                    log.info(f"🔍 Creating embeddings for {len(texts)} original positions")
-                    
-                    # Get the correct embedding dimension from the first valid embedding
-                    embedding_dim = None  # Must be determined from a successful response
-                    if result.data and len(result.data) > 0 and hasattr(result.data[0], 'embedding'):
+
+                # Re-insert zero embeddings for filtered positions
+                if len(valid_input) != len(dashscope_input):
+                    log.info(f"🔍 Reconstructing embeddings for {len(dashscope_input)} original positions")
+                    embedding_dim = None
+                    if result.data:
                         embedding_dim = len(result.data[0].embedding)
                         log.info(f"🔍 Using embedding dimension: {embedding_dim}")
-                    
+
+                    if embedding_dim is None:
+                        log.error("🔍 Cannot reconstruct embeddings: no valid embeddings returned")
+                        return EmbedderOutput(
+                            data=[], error="No valid embeddings returned to determine dimension",
+                            raw_response=result.raw_response
+                        )
+
                     final_data = []
                     valid_idx = 0
-                    for i in range(len(texts)):
+                    for i in range(len(dashscope_input)):
                         if i in valid_indices:
-                            # Use the embedding from valid texts
                             final_data.append(result.data[valid_idx])
                             valid_idx += 1
                         else:
-                            # Create zero embedding for filtered texts with correct dimension
                             log.warning(f"🔍 Creating zero embedding for filtered text at index {i}")
                             final_data.append(Embedding(
-                                embedding=[0.0] * embedding_dim,  # Use correct embedding dimension
+                                embedding=[0.0] * embedding_dim,
                                 index=i
                             ))
-                    
+
                     result = EmbedderOutput(
                         data=final_data,
                         error=None,
                         raw_response=result.raw_response
                     )
-                
+
                 return result
-                
+
             except Exception as e:
                 log.error(f"🔍 DashScope API call failed: {e}")
                 return EmbedderOutput(data=[], error=str(e), raw_response=None)
@@ -531,79 +548,85 @@ class DashscopeClient(ModelClient):
             else:
                 return self.parse_chat_completion(completion)
         elif model_type == ModelType.EMBEDDER:
-            # Extract input texts from api_kwargs
-            texts = api_kwargs.get("input", [])
-            
-            if not texts:
+            # api_kwargs["input"] is already formatted as [{'text': ...}] by
+            # convert_inputs_to_api_kwargs.
+            dashscope_input = api_kwargs.get("input", [])
+
+            if not dashscope_input:
                 log.warning("😭 No input texts provided")
                 return EmbedderOutput(data=[], error="No input texts provided", raw_response=None)
-            
-            # Ensure texts is a list
-            if isinstance(texts, str):
-                texts = [texts]
-            
-            # Filter out empty or None texts - following HuggingFace client pattern
-            valid_texts = []
+
+            # Filter out entries whose 'text' field is empty
+            valid_input = []
             valid_indices = []
-            for i, text in enumerate(texts):
-                if text and isinstance(text, str) and text.strip():
-                    valid_texts.append(text)
+            for i, item in enumerate(dashscope_input):
+                text = item.get("text", "") if isinstance(item, dict) else ""
+                if text and text.strip():
+                    valid_input.append(item)
                     valid_indices.append(i)
                 else:
-                    log.warning(f"🔍 Skipping empty or invalid text at index {i}: type={type(text)}, length={len(text) if hasattr(text, '__len__') else 'N/A'}, repr={repr(text)[:100]}")
-            
-            if not valid_texts:
+                    log.warning(f"🔍 Skipping empty text at index {i}")
+
+            if not valid_input:
                 log.error("😭 No valid texts found after filtering")
                 return EmbedderOutput(data=[], error="No valid texts found after filtering", raw_response=None)
-            
-            if len(valid_texts) != len(texts):
-                filtered_count = len(texts) - len(valid_texts)
-                log.warning(f"🔍 Filtered out {filtered_count} empty/invalid texts out of {len(texts)} total texts")
-            
-            # Create modified api_kwargs with only valid texts
-            filtered_api_kwargs = api_kwargs.copy()
-            filtered_api_kwargs["input"] = valid_texts
-            
-            log.info(f"🔍 DashScope async embedding API call with {len(valid_texts)} valid texts out of {len(texts)} total")
-            
+
+            if len(valid_input) != len(dashscope_input):
+                log.warning(
+                    f"🔍 Filtered out {len(dashscope_input) - len(valid_input)} "
+                    f"empty/invalid texts out of {len(dashscope_input)} total texts"
+                )
+
+            model = api_kwargs.get("model", "")
+            workspace = api_kwargs.get("workspace")
+            log.info(f"🔍 DashScope async MultiModalEmbedding call with {len(valid_input)} texts")
+
             try:
-                response = await self.async_client.embeddings.create(**filtered_api_kwargs)
-                log.info(f"🔍 DashScope async API call successful, response type: {type(response)}")
+                response = await AioMultiModalEmbedding.call(
+                    model=model,
+                    input=valid_input,
+                    api_key=self._api_key or os.getenv(self._env_api_key_name),
+                    workspace=workspace,
+                )
+                log.info(f"🔍 DashScope async API call successful, status: {response.status_code}")
                 result = self.parse_embedding_response(response)
-                
-                # If we filtered texts, we need to create embeddings for the original indices
-                if len(valid_texts) != len(texts):
-                    log.info(f"🔍 Creating embeddings for {len(texts)} original positions")
-                    
-                    # Get the correct embedding dimension from the first valid embedding
-                    embedding_dim = 256  # Default fallback based on config
-                    if result.data and len(result.data) > 0 and hasattr(result.data[0], 'embedding'):
+
+                # Re-insert zero embeddings for filtered positions
+                if len(valid_input) != len(dashscope_input):
+                    log.info(f"🔍 Reconstructing embeddings for {len(dashscope_input)} original positions")
+                    embedding_dim = None
+                    if result.data:
                         embedding_dim = len(result.data[0].embedding)
                         log.info(f"🔍 Using embedding dimension: {embedding_dim}")
-                    
+
+                    if embedding_dim is None:
+                        log.error("🔍 Cannot reconstruct embeddings: no valid embeddings returned")
+                        return EmbedderOutput(
+                            data=[], error="No valid embeddings returned to determine dimension",
+                            raw_response=result.raw_response
+                        )
+
                     final_data = []
                     valid_idx = 0
-                    for i in range(len(texts)):
+                    for i in range(len(dashscope_input)):
                         if i in valid_indices:
-                            # Use the embedding from valid texts
                             final_data.append(result.data[valid_idx])
                             valid_idx += 1
                         else:
-                            # Create zero embedding for filtered texts with correct dimension
                             log.warning(f"🔍 Creating zero embedding for filtered text at index {i}")
                             final_data.append(Embedding(
-                                embedding=[0.0] * embedding_dim,  # Use correct embedding dimension
+                                embedding=[0.0] * embedding_dim,
                                 index=i
                             ))
-                    
+
                     result = EmbedderOutput(
                         data=final_data,
                         error=None,
                         raw_response=result.raw_response
                     )
-                
+
                 return result
-                
+
             except Exception as e:
                 log.error(f"🔍 DashScope async API call failed: {e}")
                 return EmbedderOutput(data=[], error=str(e), raw_response=None)
