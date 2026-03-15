@@ -17,10 +17,23 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+from contextlib import asynccontextmanager
+
+# Register authentication router
+from api.auth_router import router as auth_router, init_db as _auth_init_db
+
+
+@asynccontextmanager
+async def _lifespan(application):  # noqa: ARG001
+    await _auth_init_db()
+    yield
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Streaming API",
-    description="API for streaming chat completions"
+    description="API for streaming chat completions",
+    lifespan=_lifespan,
 )
 
 # Configure CORS
@@ -31,6 +44,8 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+app.include_router(auth_router)
 
 # Helper function to get adalflow root path
 def get_adalflow_default_root_path():
