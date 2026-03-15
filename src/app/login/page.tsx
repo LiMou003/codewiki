@@ -17,7 +17,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     if (!username || !password) {
-      setError('Please enter your username and password.');
+      setError('请输入用户名和密码。');
       return;
     }
     setLoading(true);
@@ -26,7 +26,7 @@ export default function LoginPage() {
     if (success) {
       router.push('/dashboard');
     } else {
-      setError('Invalid credentials. Please try again.');
+      setError('用户名或密码错误，请重试。');
     }
   };
 
@@ -41,7 +41,7 @@ export default function LoginPage() {
             </svg>
             CodeWiki
           </Link>
-          <p className="text-[var(--muted)] text-sm mt-2">Sign in to your account</p>
+          <p className="text-[var(--muted)] text-sm mt-2">登录你的账户</p>
         </div>
 
         {/* Card */}
@@ -49,7 +49,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-                Username
+                用户名
               </label>
               <input
                 id="username"
@@ -63,7 +63,7 @@ export default function LoginPage() {
             </div>
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-                Password
+                密码
               </label>
               <input
                 id="password"
@@ -82,8 +82,8 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between text-sm">
               <span />
-              <span className="text-[var(--muted)] cursor-not-allowed" title="Requires backend integration">
-                Forgot password?
+              <span className="text-[var(--muted)] cursor-not-allowed" title="需要后端支持">
+                忘记密码？
               </span>
             </div>
 
@@ -92,20 +92,20 @@ export default function LoginPage() {
               disabled={loading}
               className="btn-primary w-full py-2.5 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? '登录中...' : '登录'}
             </button>
           </form>
 
           <p className="text-center text-sm text-[var(--muted)] mt-6">
-            Don&apos;t have an account?{' '}
+            还没有账户？{' '}
             <Link href="/register" className="text-[var(--accent-primary)] font-medium hover:underline">
-              Sign up
+              立即注册
             </Link>
           </p>
         </div>
 
         <p className="text-center text-xs text-[var(--muted)] mt-6">
-          <Link href="/" className="hover:underline">← Back to home</Link>
+          <Link href="/" className="hover:underline">← 返回首页</Link>
         </p>
       </div>
     </div>

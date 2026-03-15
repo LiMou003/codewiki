@@ -14,11 +14,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 // Define the demo mermaid charts outside the component
 const DEMO_FLOW_CHART = `graph TD
-  A[Code Repository] --> B[CodeWiki]
-  B --> C[Architecture Diagrams]
-  B --> D[Component Relationships]
-  B --> E[Data Flow]
-  B --> F[Process Workflows]
+  A[代码仓库] --> B[CodeWiki]
+  B --> C[架构图]
+  B --> D[组件关系]
+  B --> E[数据流]
+  B --> F[流程图]
 
   style A fill:#dbeafe,stroke:#2563eb
   style B fill:#eff6ff,stroke:#2563eb
@@ -28,17 +28,17 @@ const DEMO_FLOW_CHART = `graph TD
   style F fill:#60a5fa,stroke:#1d4ed8`;
 
 const DEMO_SEQUENCE_CHART = `sequenceDiagram
-  participant User
+  participant 用户
   participant CodeWiki
   participant GitHub
 
-  User->>CodeWiki: Enter repository URL
-  CodeWiki->>GitHub: Request repository data
-  GitHub-->>CodeWiki: Return repository data
-  CodeWiki->>CodeWiki: Process and analyze code
-  CodeWiki-->>User: Display wiki with diagrams
+  用户->>CodeWiki: 输入仓库地址
+  CodeWiki->>GitHub: 请求仓库数据
+  GitHub-->>CodeWiki: 返回仓库数据
+  CodeWiki->>CodeWiki: 处理并分析代码
+  CodeWiki-->>用户: 展示包含图表的 Wiki
 
-  Note over User,GitHub: CodeWiki supports sequence diagrams for visualizing interactions`;
+  Note over 用户,GitHub: CodeWiki 支持时序图以可视化交互流程`;
 
 export default function Dashboard() {
   const router = useRouter();
@@ -338,17 +338,17 @@ export default function Dashboard() {
                 {userMenuOpen && (
                   <div className="absolute right-0 mt-2 w-44 bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg shadow-lg py-1 z-50">
                     <Link href="/user" className="block px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--accent-secondary)] transition-colors" onClick={() => setUserMenuOpen(false)}>
-                      Profile
+                      个人中心
                     </Link>
                     <button onClick={() => { setUserMenuOpen(false); handleSignOut(); }} className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--accent-secondary)] transition-colors">
-                      Sign out
+                      退出登录
                     </button>
                   </div>
                 )}
               </div>
             ) : (
               <Link href="/login" className="text-sm font-medium text-[var(--accent-primary)] hover:underline">
-                Sign in
+                登录
               </Link>
             )}
           </div>
@@ -365,8 +365,8 @@ export default function Dashboard() {
                 </svg>
               </div>
               <div className="mr-6">
-                <h1 className="text-xl md:text-2xl font-bold text-[var(--accent-primary)]">Dashboard</h1>
-                <p className="text-xs text-[var(--muted)]">Generate a wiki for any repository</p>
+                <h1 className="text-xl md:text-2xl font-bold text-[var(--accent-primary)]">控制台</h1>
+                <p className="text-xs text-[var(--muted)]">为任意仓库生成 Wiki</p>
               </div>
             </div>
 
