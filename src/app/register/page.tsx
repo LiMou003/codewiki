@@ -19,15 +19,15 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
     if (!username || !email || !password || !confirm) {
-      setError('All fields are required.');
+      setError('所有字段均为必填项。');
       return;
     }
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      setError('两次输入的密码不一致。');
       return;
     }
     if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError('密码长度至少为 8 个字符。');
       return;
     }
     setLoading(true);
@@ -36,7 +36,7 @@ export default function RegisterPage() {
     if (success) {
       router.push('/dashboard');
     } else {
-      setError('Registration failed. Please try again.');
+      setError('注册失败，请重试。');
     }
   };
 
@@ -51,7 +51,7 @@ export default function RegisterPage() {
             </svg>
             CodeWiki
           </Link>
-          <p className="text-[var(--muted)] text-sm mt-2">Create your free account</p>
+          <p className="text-[var(--muted)] text-sm mt-2">创建你的免费账户</p>
         </div>
 
         {/* Card */}
@@ -59,7 +59,7 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-                Username
+                用户名
               </label>
               <input
                 id="username"
@@ -73,7 +73,7 @@ export default function RegisterPage() {
             </div>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-                Email address
+                电子邮箱
               </label>
               <input
                 id="email"
@@ -87,7 +87,7 @@ export default function RegisterPage() {
             </div>
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-                Password
+                密码
               </label>
               <input
                 id="password"
@@ -101,7 +101,7 @@ export default function RegisterPage() {
             </div>
             <div>
               <label htmlFor="confirm" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-                Confirm password
+                确认密码
               </label>
               <input
                 id="confirm"
@@ -123,20 +123,20 @@ export default function RegisterPage() {
               disabled={loading}
               className="btn-primary w-full py-2.5 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
-              {loading ? 'Creating account...' : 'Create account'}
+              {loading ? '注册中...' : '创建账户'}
             </button>
           </form>
 
           <p className="text-center text-sm text-[var(--muted)] mt-6">
-            Already have an account?{' '}
+            已有账户？{' '}
             <Link href="/login" className="text-[var(--accent-primary)] font-medium hover:underline">
-              Sign in
+              立即登录
             </Link>
           </p>
         </div>
 
         <p className="text-center text-xs text-[var(--muted)] mt-6">
-          <Link href="/" className="hover:underline">← Back to home</Link>
+          <Link href="/" className="hover:underline">← 返回首页</Link>
         </p>
       </div>
     </div>

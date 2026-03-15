@@ -47,9 +47,9 @@ export default function UserPage() {
     return (
       <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
         <div className="text-center">
-          <p className="text-[var(--muted)] mb-4">You are not signed in.</p>
+          <p className="text-[var(--muted)] mb-4">您尚未登录。</p>
           <Link href="/login" className="btn-primary px-6 py-2.5 rounded-lg font-semibold">
-            Sign in
+            登录
           </Link>
         </div>
       </div>
@@ -65,7 +65,7 @@ export default function UserPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
-            Back to Dashboard
+            返回控制台
           </Link>
           <div className="flex items-center gap-4">
             <ThemeToggle />
@@ -89,13 +89,13 @@ export default function UserPage() {
             onClick={handleSignOut}
             className="w-full sm:w-auto px-6 py-2 rounded-lg border border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 text-sm font-medium transition-colors"
           >
-            Sign out
+            退出登录
           </button>
         </div>
 
         {/* Recent Projects */}
         <div className="card-modern p-6 shadow-custom">
-          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Recent Projects</h2>
+          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">最近项目</h2>
           {recentProjects.length > 0 ? (
             <ul className="space-y-2">
               {recentProjects.map((p, i) => (
@@ -108,26 +108,26 @@ export default function UserPage() {
                     href={`/${p.owner}/${p.repo}`}
                     className="text-xs text-[var(--accent-primary)] hover:underline"
                   >
-                    View →
+                    查看 →
                   </Link>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-[var(--muted)]">No recent projects. <Link href="/dashboard" className="text-[var(--accent-primary)] hover:underline">Generate your first wiki</Link>.</p>
+            <p className="text-sm text-[var(--muted)]">暂无最近项目。<Link href="/dashboard" className="text-[var(--accent-primary)] hover:underline">生成你的第一个 Wiki</Link>。</p>
           )}
         </div>
 
         {/* Account Settings */}
         <div className="card-modern p-6 shadow-custom">
-          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Account Settings</h2>
+          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">账户设置</h2>
           <div className="rounded-lg bg-[var(--accent-secondary)] border border-[var(--border-color)] p-4 flex items-start gap-3">
             <svg className="w-5 h-5 text-[var(--accent-primary)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <p className="text-sm font-medium text-[var(--foreground)]">Backend integration required</p>
-              <p className="text-xs text-[var(--muted)] mt-1">Account settings like password changes and email updates require backend integration. This is a frontend demo using local storage only.</p>
+              <p className="text-sm font-medium text-[var(--foreground)]">需要后端集成</p>
+              <p className="text-xs text-[var(--muted)] mt-1">修改密码和更新邮箱等账户设置需要后端集成支持。当前为纯前端演示，仅使用本地存储。</p>
             </div>
           </div>
         </div>

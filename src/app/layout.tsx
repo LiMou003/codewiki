@@ -5,8 +5,8 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
-  title: "CodeWiki - AI-Powered Code Documentation",
-  description: "AI-powered wiki generation for code repositories",
+  title: "CodeWiki - AI 驱动代码文档",
+  description: "AI 驱动的代码仓库 Wiki 生成工具",
 };
 
 export default function RootLayout({

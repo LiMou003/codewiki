@@ -42,8 +42,8 @@ export default function LandingPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       ),
-      title: 'AI-Powered Documentation',
-      desc: 'Auto-generate comprehensive wikis from any code repository with intelligent AI analysis.',
+      title: 'AI 驱动文档生成',
+      desc: '利用智能 AI 分析，自动为任意代码仓库生成全面的 Wiki 文档。',
     },
     {
       icon: (
@@ -51,8 +51,8 @@ export default function LandingPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
         </svg>
       ),
-      title: 'Interactive Q&A',
-      desc: 'Ask natural language questions about any repository and get accurate, context-aware answers.',
+      title: '交互式问答',
+      desc: '用自然语言提问任意仓库的问题，获取准确、上下文相关的答案。',
     },
     {
       icon: (
@@ -60,8 +60,8 @@ export default function LandingPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
         </svg>
       ),
-      title: 'Visual Diagrams',
-      desc: 'Automatically generate architecture diagrams, flow charts, and sequence diagrams from code.',
+      title: '可视化图表',
+      desc: '自动从代码生成架构图、流程图和时序图。',
     },
     {
       icon: (
@@ -69,22 +69,22 @@ export default function LandingPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       ),
-      title: 'Multi-Provider AI',
-      desc: 'Support for OpenAI, Google Gemini, Anthropic Claude, and local models via Ollama.',
+      title: '多 AI 提供商支持',
+      desc: '支持 OpenAI、Google Gemini、Anthropic Claude 以及通过 Ollama 运行的本地模型。',
     },
   ];
 
   const steps = [
-    { num: '1', title: 'Enter Repository URL', desc: 'Paste any GitHub, GitLab, Bitbucket URL or local path.' },
-    { num: '2', title: 'AI Analyzes Code', desc: 'Our AI reads through the entire codebase and understands the architecture.' },
-    { num: '3', title: 'Get Your Wiki', desc: 'Browse an interactive, comprehensive wiki with diagrams and Q&A.' },
+    { num: '1', title: '输入仓库地址', desc: '粘贴任意 GitHub、GitLab、Bitbucket 链接或本地路径。' },
+    { num: '2', title: 'AI 分析代码', desc: '我们的 AI 读取整个代码库，深入理解其架构。' },
+    { num: '3', title: '获取你的 Wiki', desc: '浏览包含图表和问答功能的交互式、全面的 Wiki。' },
   ];
 
   const stats = [
-    { label: 'AI Providers', value: '4+' },
-    { label: 'Open Source', value: '100%' },
-    { label: 'Git Platforms', value: '3+' },
-    { label: 'Languages', value: '10+' },
+    { label: 'AI 提供商', value: '4+' },
+    { label: '开源', value: '100%' },
+    { label: 'Git 平台', value: '3+' },
+    { label: '支持语言', value: '10+' },
   ];
 
   return (
@@ -103,18 +103,18 @@ export default function LandingPage() {
 
             {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-6">
-              <Link href="#features" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">Features</Link>
-              <Link href="#how-it-works" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">How it works</Link>
+              <Link href="#features" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">功能特性</Link>
+              <Link href="#how-it-works" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">使用流程</Link>
               <ThemeToggle />
               {isLoggedIn ? (
                 <>
-                  <Link href="/dashboard" className="text-sm font-medium text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors">Dashboard</Link>
-                  <button onClick={handleSignOut} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">Sign out</button>
+                  <Link href="/dashboard" className="text-sm font-medium text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors">控制台</Link>
+                  <button onClick={handleSignOut} className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">退出登录</button>
                 </>
               ) : (
                 <>
-                  <Link href="/login" className="text-sm font-medium text-[var(--foreground)] hover:text-[var(--accent-primary)] transition-colors">Sign in</Link>
-                  <Link href="/register" className="btn-primary text-sm px-4 py-2 rounded-lg">Sign up</Link>
+                  <Link href="/login" className="text-sm font-medium text-[var(--foreground)] hover:text-[var(--accent-primary)] transition-colors">登录</Link>
+                  <Link href="/register" className="btn-primary text-sm px-4 py-2 rounded-lg">注册</Link>
                 </>
               )}
             </div>
@@ -136,17 +136,17 @@ export default function LandingPage() {
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-[var(--border-color)] bg-[var(--background)] px-4 py-3 flex flex-col gap-3">
-            <Link href="#features" className="text-sm text-[var(--muted)]" onClick={() => setMobileMenuOpen(false)}>Features</Link>
-            <Link href="#how-it-works" className="text-sm text-[var(--muted)]" onClick={() => setMobileMenuOpen(false)}>How it works</Link>
+            <Link href="#features" className="text-sm text-[var(--muted)]" onClick={() => setMobileMenuOpen(false)}>功能特性</Link>
+            <Link href="#how-it-works" className="text-sm text-[var(--muted)]" onClick={() => setMobileMenuOpen(false)}>使用流程</Link>
             {isLoggedIn ? (
               <>
-                <Link href="/dashboard" className="text-sm font-medium text-[var(--accent-primary)]" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
-                <button onClick={() => { handleSignOut(); setMobileMenuOpen(false); }} className="text-sm text-left text-[var(--muted)]">Sign out</button>
+                <Link href="/dashboard" className="text-sm font-medium text-[var(--accent-primary)]" onClick={() => setMobileMenuOpen(false)}>控制台</Link>
+                <button onClick={() => { handleSignOut(); setMobileMenuOpen(false); }} className="text-sm text-left text-[var(--muted)]">退出登录</button>
               </>
             ) : (
               <>
-                <Link href="/login" className="text-sm font-medium text-[var(--foreground)]" onClick={() => setMobileMenuOpen(false)}>Sign in</Link>
-                <Link href="/register" className="btn-primary text-sm px-4 py-2 rounded-lg text-center" onClick={() => setMobileMenuOpen(false)}>Sign up</Link>
+                <Link href="/login" className="text-sm font-medium text-[var(--foreground)]" onClick={() => setMobileMenuOpen(false)}>登录</Link>
+                <Link href="/register" className="btn-primary text-sm px-4 py-2 rounded-lg text-center" onClick={() => setMobileMenuOpen(false)}>注册</Link>
               </>
             )}
           </div>
@@ -159,21 +159,21 @@ export default function LandingPage() {
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 text-center">
           <div className="inline-flex items-center gap-2 bg-[var(--accent-secondary)] text-[var(--accent-primary)] text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>
-            AI-Powered · Open Source
+            AI 驱动 · 开源
           </div>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-[var(--foreground)] mb-6 leading-tight">
-            Instant wikis for<br />
-            <span className="text-[var(--accent-primary)]">any code repository</span>
+            为任意代码仓库<br />
+            <span className="text-[var(--accent-primary)]">即时生成 Wiki</span>
           </h1>
           <p className="text-lg md:text-xl text-[var(--muted)] max-w-2xl mx-auto mb-10 leading-relaxed">
-            CodeWiki uses AI to read your entire codebase and generate comprehensive documentation, diagrams, and an interactive Q&amp;A assistant — in minutes.
+            CodeWiki 利用 AI 读取你的整个代码库，在几分钟内生成全面的文档、图表和交互式问答助手。
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               onClick={handleGetStarted}
               className="btn-primary px-8 py-3 text-base rounded-lg font-semibold shadow-lg"
             >
-              Get started free
+              免费开始使用
             </button>
             <Link
               href="/dashboard"
@@ -183,7 +183,7 @@ export default function LandingPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              See how it works
+              查看使用演示
             </Link>
           </div>
         </div>
@@ -205,8 +205,8 @@ export default function LandingPage() {
       <section id="features" className="py-20 bg-[var(--background)]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] mb-4">Everything you need</h2>
-            <p className="text-[var(--muted)] text-lg max-w-xl mx-auto">Powerful features to understand any codebase faster than ever before.</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] mb-4">一切你所需要的</h2>
+            <p className="text-[var(--muted)] text-lg max-w-xl mx-auto">强大的功能，让你比以往更快地理解任意代码库。</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((f) => (
@@ -225,8 +225,8 @@ export default function LandingPage() {
       {/* How it works */}
       <section id="how-it-works" className="py-20 bg-[var(--card-bg)] border-y border-[var(--border-color)]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] mb-4">How it works</h2>
-          <p className="text-[var(--muted)] text-lg mb-14">Three simple steps to transform your repository into living documentation.</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] mb-4">使用流程</h2>
+          <p className="text-[var(--muted)] text-lg mb-14">三个简单步骤，将你的仓库转变为活跃的文档。</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {steps.map((step, i) => (
               <div key={step.num} className="relative flex flex-col items-center">
@@ -244,28 +244,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 bg-[var(--accent-primary)]">
-        <div className="max-w-3xl mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Ready to document your code?</h2>
-          <p className="text-blue-100 text-lg mb-8">Join developers using CodeWiki to understand codebases faster.</p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={handleGetStarted}
-              className="px-8 py-3 bg-white text-[var(--accent-primary)] font-semibold rounded-lg hover:bg-blue-50 transition-colors shadow-lg"
-            >
-              Get started free
-            </button>
-            <Link
-              href="/dashboard"
-              className="px-8 py-3 border border-white/40 text-white font-semibold rounded-lg hover:bg-white/10 transition-colors"
-            >
-              Open Demo
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="bg-[var(--card-bg)] border-t border-[var(--border-color)] py-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -277,13 +255,13 @@ export default function LandingPage() {
               CodeWiki
             </div>
             <div className="flex items-center gap-6 text-sm text-[var(--muted)]">
-              <Link href="/dashboard" className="hover:text-[var(--foreground)] transition-colors">App</Link>
+              <Link href="/dashboard" className="hover:text-[var(--foreground)] transition-colors">应用</Link>
               <a href="https://github.com/AsyncFuncAI/deepwiki-open" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--foreground)] transition-colors">GitHub</a>
               <ThemeToggle />
             </div>
           </div>
           <p className="text-center text-sm text-[var(--muted)] mt-6">
-            © {new Date().getFullYear()} CodeWiki. Open source under MIT License.
+            © {new Date().getFullYear()} CodeWiki. 以 MIT 许可证开源。
           </p>
         </div>
       </footer>
