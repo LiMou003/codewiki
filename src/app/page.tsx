@@ -69,22 +69,15 @@ export default function LandingPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       ),
-      title: '多 AI 提供商支持',
-      desc: '支持 OpenAI、Google Gemini、Anthropic Claude 以及通过 Ollama 运行的本地模型。',
+      title: '强大的 AI 提供商支持',
+      desc: 'Qwen系列模型的强大回答能力,支持qwen3.5-plus、qwen3.5-flash等模型。',
     },
   ];
 
   const steps = [
-    { num: '1', title: '输入仓库地址', desc: '粘贴任意 GitHub、GitLab、Bitbucket 链接或本地路径。' },
+    { num: '1', title: '输入仓库地址', desc: '粘贴任意 GitHub链接或本地路径。' },
     { num: '2', title: 'AI 分析代码', desc: '我们的 AI 读取整个代码库，深入理解其架构。' },
     { num: '3', title: '获取你的 Wiki', desc: '浏览包含图表和问答功能的交互式、全面的 Wiki。' },
-  ];
-
-  const stats = [
-    { label: 'AI 提供商', value: '4+' },
-    { label: '开源', value: '100%' },
-    { label: 'Git 平台', value: '3+' },
-    { label: '支持语言', value: '10+' },
   ];
 
   return (
@@ -175,29 +168,7 @@ export default function LandingPage() {
             >
               免费开始使用
             </button>
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center justify-center gap-2 px-8 py-3 text-base rounded-lg font-semibold border border-[var(--border-color)] text-[var(--foreground)] hover:bg-[var(--card-bg)] transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              查看使用演示
-            </Link>
           </div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="border-y border-[var(--border-color)] bg-[var(--card-bg)]">
-        <div className="max-w-5xl mx-auto px-4 py-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          {stats.map((s) => (
-            <div key={s.label}>
-              <div className="text-3xl font-bold text-[var(--accent-primary)]">{s.value}</div>
-              <div className="text-sm text-[var(--muted)] mt-1">{s.label}</div>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -255,14 +226,10 @@ export default function LandingPage() {
               CodeWiki
             </div>
             <div className="flex items-center gap-6 text-sm text-[var(--muted)]">
-              <Link href="/dashboard" className="hover:text-[var(--foreground)] transition-colors">应用</Link>
-              <a href="https://github.com/AsyncFuncAI/deepwiki-open" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--foreground)] transition-colors">GitHub</a>
+              <a href="https://github.com/LiMou003/codewiki" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--foreground)] transition-colors">GitHub</a>
               <ThemeToggle />
             </div>
           </div>
-          <p className="text-center text-sm text-[var(--muted)] mt-6">
-            © {new Date().getFullYear()} CodeWiki. 以 MIT 许可证开源。
-          </p>
         </div>
       </footer>
     </div>

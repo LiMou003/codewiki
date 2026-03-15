@@ -5,7 +5,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
-  title: "CodeWiki - AI 驱动代码文档",
+  title: "CodeWiki",
   description: "AI 驱动的代码仓库 Wiki 生成工具",
 };
 

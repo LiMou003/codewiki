@@ -89,16 +89,20 @@ async def get_db() -> AsyncSession:  # type: ignore[override]
 # ---------------------------------------------------------------------------
 # Security helpers
 # ---------------------------------------------------------------------------
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 _bearer = HTTPBearer(auto_error=False)
 
 
 def _hash_password(plain: str) -> str:
+    # PBKDF2-SHA256 has no 72-byte bcrypt limit
     return _pwd_context.hash(plain)
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_context.verify(plain, hashed)
+    try:
+        return _pwd_context.verify(plain, hashed)
+    except Exception:
+        return False
 
 
 def _create_access_token(
