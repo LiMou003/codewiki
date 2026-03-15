@@ -8,6 +8,7 @@ import ThemeToggle from '@/components/theme-toggle';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { RepoInfo } from '@/types/repoinfo';
 import getRepoUrl from '@/utils/getRepoUrl';
+import { useCurrentUsername } from '@/hooks/useCurrentUsername';
 
 // Helper function to add tokens and other parameters to request body
 const addTokensToRequestBody = (
@@ -88,16 +89,7 @@ export default function SlidesPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Current logged-in username (used for per-user wiki cache scoping)
-  const [currentUsername, setCurrentUsername] = useState<string>('');
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('cw_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setCurrentUsername(parsed.username || '');
-      }
-    } catch { /* ignore */ }
-  }, []);
+  const currentUsername = useCurrentUsername();
 
   // Define a type for the wiki content
   interface WikiPage {

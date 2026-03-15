@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useCurrentUsername } from './useCurrentUsername';
 
 interface ProcessedProject {
   id: string;
@@ -14,25 +15,13 @@ export function useProcessedProjects() {
   const [projects, setProjects] = useState<ProcessedProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const username = useCurrentUsername();
 
   useEffect(() => {
     const fetchProjects = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Retrieve the logged-in username so the backend can scope results to
-        // that user's cache directory.
-        let username = '';
-        try {
-          const stored = localStorage.getItem('cw_user');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            username = parsed.username || '';
-          }
-        } catch {
-          // ignore – proceed without username
-        }
-
         const url = username
           ? `/api/wiki/projects?username=${encodeURIComponent(username)}`
           : '/api/wiki/projects';
@@ -57,7 +46,7 @@ export function useProcessedProjects() {
     };
 
     fetchProjects();
-  }, []);
+  }, [username]);
 
   return { projects, isLoading, error };
 }

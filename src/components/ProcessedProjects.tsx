@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { FaTimes, FaTh, FaList } from 'react-icons/fa';
+import { useCurrentUsername } from '@/hooks/useCurrentUsername';
 
 // Interface should match the structure from the API
 interface ProcessedProject {
@@ -33,6 +34,7 @@ export default function ProcessedProjects({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const username = useCurrentUsername();
 
   // Default messages fallback
   const defaultMessages = {
@@ -53,21 +55,11 @@ export default function ProcessedProjects({
     return defaultMessages[key as keyof typeof defaultMessages] || key;
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     const fetchProjects = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        let username = '';
-        try {
-          const stored = localStorage.getItem('cw_user');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            username = parsed.username || '';
-          }
-        } catch {
-          // ignore
-        }
         const url = username
           ? `/api/wiki/projects?username=${encodeURIComponent(username)}`
           : '/api/wiki/projects';
@@ -91,7 +83,7 @@ export default function ProcessedProjects({
     };
 
     fetchProjects();
-  }, []);
+  }, [username]);
 
   // Filter projects based on search query
   const filteredProjects = useMemo(() => {
@@ -119,16 +111,6 @@ export default function ProcessedProjects({
       return;
     }
     try {
-      let username = '';
-      try {
-        const stored = localStorage.getItem('cw_user');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          username = parsed.username || '';
-        }
-      } catch {
-        // ignore
-      }
       const response = await fetch('/api/wiki/projects', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },

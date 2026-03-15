@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaBitbucket, FaBookOpen, FaComments, FaDownload, FaExclamationTriangle, FaFileExport, FaFolder, FaGithub, FaGitlab, FaHome, FaSync, FaTimes } from 'react-icons/fa';
+import { useCurrentUsername } from '@/hooks/useCurrentUsername';
 // Define the WikiSection and WikiStructure types directly in this file
 // since the imported types don't have the sections and rootSections properties
 interface WikiSection {
@@ -307,16 +308,7 @@ export default function RepoWikiPage() {
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   // Current logged-in username (used for per-user wiki cache scoping)
-  const [currentUsername, setCurrentUsername] = useState<string>('');
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('cw_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setCurrentUsername(parsed.username || '');
-      }
-    } catch { /* ignore */ }
-  }, []);
+  const currentUsername = useCurrentUsername();
 
   // Default branch state
   const [defaultBranch, setDefaultBranch] = useState<string>('main');
