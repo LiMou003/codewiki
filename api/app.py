@@ -123,6 +123,7 @@ class WikiCacheRequest(BaseModel):
     generated_pages: Dict[str, WikiPage]
     provider: str
     model: str
+    username: Optional[str] = None
 
 class WikiExportRequest(BaseModel):
     """
@@ -420,14 +421,31 @@ app.add_websocket_route("/ws/chat", handle_websocket_chat)
 WIKI_CACHE_DIR = os.path.join(get_adalflow_default_root_path(), "wikicache")
 os.makedirs(WIKI_CACHE_DIR, exist_ok=True)
 
-def get_wiki_cache_path(owner: str, repo: str, repo_type: str, language: str) -> str:
-    """Generates the file path for a given wiki cache."""
+def get_wiki_cache_path(owner: str, repo: str, repo_type: str, language: str, username: Optional[str] = None) -> str:
+    """Generates the file path for a given wiki cache.
+
+    When *username* is provided the cache file is stored under a per-user
+    sub-directory (``WIKI_CACHE_DIR/<username>/``).  The sub-directory is
+    created automatically on first use so new users are handled transparently.
+    When *username* is absent the root ``WIKI_CACHE_DIR`` is used for
+    backward compatibility.
+    """
     filename = f"deepwiki_cache_{repo_type}_{owner}_{repo}_{language}.json"
+    if username:
+        # Sanitize username: keep only alphanumeric chars, hyphens and
+        # underscores to prevent path-traversal attacks.  Dots are excluded
+        # intentionally to avoid the ``..`` directory escape vector.
+        safe_username = "".join(c for c in username if c.isalnum() or c in ("-", "_"))
+        if not safe_username:
+            safe_username = "_anonymous"
+        user_cache_dir = os.path.join(WIKI_CACHE_DIR, safe_username)
+        os.makedirs(user_cache_dir, exist_ok=True)
+        return os.path.join(user_cache_dir, filename)
     return os.path.join(WIKI_CACHE_DIR, filename)
 
-async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) -> Optional[WikiCacheData]:
+async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str, username: Optional[str] = None) -> Optional[WikiCacheData]:
     """Reads wiki cache data from the file system."""
-    cache_path = get_wiki_cache_path(owner, repo, repo_type, language)
+    cache_path = get_wiki_cache_path(owner, repo, repo_type, language, username)
     if os.path.exists(cache_path):
         try:
             with open(cache_path, 'r', encoding='utf-8') as f:
@@ -440,7 +458,7 @@ async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) 
 
 async def save_wiki_cache(data: WikiCacheRequest) -> bool:
     """Saves wiki cache data to the file system."""
-    cache_path = get_wiki_cache_path(data.repo.owner, data.repo.repo, data.repo.type, data.language)
+    cache_path = get_wiki_cache_path(data.repo.owner, data.repo.repo, data.repo.type, data.language, data.username)
     logger.info(f"Attempting to save wiki cache. Path: {cache_path}")
     try:
         payload = WikiCacheData(
@@ -478,7 +496,8 @@ async def get_cached_wiki(
     owner: str = Query(..., description="Repository owner"),
     repo: str = Query(..., description="Repository name"),
     repo_type: str = Query(..., description="Repository type (e.g., github, gitlab)"),
-    language: str = Query(..., description="Language of the wiki content")
+    language: str = Query(..., description="Language of the wiki content"),
+    username: Optional[str] = Query(None, description="Username for user-specific cache")
 ):
     """
     Retrieves cached wiki data (structure and generated pages) for a repository.
@@ -488,8 +507,8 @@ async def get_cached_wiki(
     if not supported_langs.__contains__(language):
         language = configs["lang_config"]["default"]
 
-    logger.info(f"Attempting to retrieve wiki cache for {owner}/{repo} ({repo_type}), lang: {language}")
-    cached_data = await read_wiki_cache(owner, repo, repo_type, language)
+    logger.info(f"Attempting to retrieve wiki cache for {owner}/{repo} ({repo_type}), lang: {language}, user: {username}")
+    cached_data = await read_wiki_cache(owner, repo, repo_type, language, username)
     if cached_data:
         return cached_data
     else:
@@ -522,7 +541,8 @@ async def delete_wiki_cache(
     repo: str = Query(..., description="Repository name"),
     repo_type: str = Query(..., description="Repository type (e.g., github, gitlab)"),
     language: str = Query(..., description="Language of the wiki content"),
-    authorization_code: Optional[str] = Query(None, description="Authorization code")
+    authorization_code: Optional[str] = Query(None, description="Authorization code"),
+    username: Optional[str] = Query(None, description="Username for user-specific cache")
 ):
     """
     Deletes a specific wiki cache from the file system.
@@ -537,8 +557,8 @@ async def delete_wiki_cache(
         if not authorization_code or WIKI_AUTH_CODE != authorization_code:
             raise HTTPException(status_code=401, detail="Authorization code is invalid")
 
-    logger.info(f"Attempting to delete wiki cache for {owner}/{repo} ({repo_type}), lang: {language}")
-    cache_path = get_wiki_cache_path(owner, repo, repo_type, language)
+    logger.info(f"Attempting to delete wiki cache for {owner}/{repo} ({repo_type}), lang: {language}, user: {username}")
+    cache_path = get_wiki_cache_path(owner, repo, repo_type, language, username)
 
     if os.path.exists(cache_path):
         try:
@@ -590,25 +610,39 @@ async def root():
 
 # --- Processed Projects Endpoint --- (New Endpoint)
 @app.get("/api/processed_projects", response_model=List[ProcessedProjectEntry])
-async def get_processed_projects():
+async def get_processed_projects(
+    username: Optional[str] = Query(None, description="Username to scope project listing to a specific user")
+):
     """
-    Lists all processed projects found in the wiki cache directory.
-    Projects are identified by files named like: deepwiki_cache_{repo_type}_{owner}_{repo}_{language}.json
+    Lists processed projects found in the wiki cache directory.
+
+    When *username* is provided only the projects stored under that user's
+    sub-directory (``WIKI_CACHE_DIR/<username>/``) are returned.  When
+    *username* is absent the root ``WIKI_CACHE_DIR`` is scanned for backward
+    compatibility with caches created before per-user storage was introduced.
     """
     project_entries: List[ProcessedProjectEntry] = []
-    # WIKI_CACHE_DIR is already defined globally in the file
+
+    # Determine which directory to scan
+    if username:
+        safe_username = "".join(c for c in username if c.isalnum() or c in ("-", "_"))
+        if not safe_username:
+            safe_username = "_anonymous"
+        scan_dir = os.path.join(WIKI_CACHE_DIR, safe_username)
+    else:
+        scan_dir = WIKI_CACHE_DIR
 
     try:
-        if not os.path.exists(WIKI_CACHE_DIR):
-            logger.info(f"Cache directory {WIKI_CACHE_DIR} not found. Returning empty list.")
+        if not os.path.exists(scan_dir):
+            logger.info(f"Cache directory {scan_dir} not found. Returning empty list.")
             return []
 
-        logger.info(f"Scanning for project cache files in: {WIKI_CACHE_DIR}")
-        filenames = await asyncio.to_thread(os.listdir, WIKI_CACHE_DIR) # Use asyncio.to_thread for os.listdir
+        logger.info(f"Scanning for project cache files in: {scan_dir}")
+        filenames = await asyncio.to_thread(os.listdir, scan_dir) # Use asyncio.to_thread for os.listdir
 
         for filename in filenames:
             if filename.startswith("deepwiki_cache_") and filename.endswith(".json"):
-                file_path = os.path.join(WIKI_CACHE_DIR, filename)
+                file_path = os.path.join(scan_dir, filename)
                 try:
                     stats = await asyncio.to_thread(os.stat, file_path) # Use asyncio.to_thread for os.stat
                     parts = filename.replace("deepwiki_cache_", "").replace(".json", "").split('_')
@@ -645,5 +679,5 @@ async def get_processed_projects():
         return project_entries
 
     except Exception as e:
-        logger.error(f"Error listing processed projects from {WIKI_CACHE_DIR}: {e}", exc_info=True)
+        logger.error(f"Error listing processed projects from {scan_dir}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list processed projects from server cache.")

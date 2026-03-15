@@ -9,6 +9,7 @@ import Markdown from '@/components/Markdown';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { RepoInfo } from '@/types/repoinfo';
 import getRepoUrl from '@/utils/getRepoUrl';
+import { useCurrentUsername } from '@/hooks/useCurrentUsername';
 
 // Helper function to add tokens and other parameters to request body
 const addTokensToRequestBody = (
@@ -78,6 +79,9 @@ export default function WorkshopPage() {
   const [workshopContent, setWorkshopContent] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  // Current logged-in username (used for per-user wiki cache scoping)
+  const currentUsername = useCurrentUsername();
   // Define a type for the wiki content
   interface WikiPage {
     id: string;
@@ -118,6 +122,10 @@ export default function WorkshopPage() {
         repo_type: repoInfo.type,
         language: language,
       });
+      // Scope cache lookup to the current user's directory
+      if (currentUsername) {
+        params.append('username', currentUsername);
+      }
       const response = await fetch(`/api/wiki_cache?${params.toString()}`);
 
       if (response.ok) {
@@ -139,7 +147,7 @@ export default function WorkshopPage() {
       console.error('Error loading from server cache:', error);
       return null;
     }
-  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language]);
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, currentUsername]);
 
   // Generate workshop content
   const generateWorkshopContent = useCallback(async () => {

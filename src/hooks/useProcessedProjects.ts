@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useCurrentUsername } from './useCurrentUsername';
 
 interface ProcessedProject {
   id: string;
@@ -14,13 +15,18 @@ export function useProcessedProjects() {
   const [projects, setProjects] = useState<ProcessedProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const username = useCurrentUsername();
 
   useEffect(() => {
     const fetchProjects = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch('/api/wiki/projects');
+        const url = username
+          ? `/api/wiki/projects?username=${encodeURIComponent(username)}`
+          : '/api/wiki/projects';
+
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`Failed to fetch projects: ${response.statusText}`);
         }
@@ -40,7 +46,7 @@ export function useProcessedProjects() {
     };
 
     fetchProjects();
-  }, []);
+  }, [username]);
 
   return { projects, isLoading, error };
 }

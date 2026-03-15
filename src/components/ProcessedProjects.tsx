@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { FaTimes, FaTh, FaList } from 'react-icons/fa';
+import { useCurrentUsername } from '@/hooks/useCurrentUsername';
 
 // Interface should match the structure from the API
 interface ProcessedProject {
@@ -33,6 +34,7 @@ export default function ProcessedProjects({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const username = useCurrentUsername();
 
   // Default messages fallback
   const defaultMessages = {
@@ -53,12 +55,15 @@ export default function ProcessedProjects({
     return defaultMessages[key as keyof typeof defaultMessages] || key;
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     const fetchProjects = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch('/api/wiki/projects');
+        const url = username
+          ? `/api/wiki/projects?username=${encodeURIComponent(username)}`
+          : '/api/wiki/projects';
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`Failed to fetch projects: ${response.statusText}`);
         }
@@ -78,7 +83,7 @@ export default function ProcessedProjects({
     };
 
     fetchProjects();
-  }, []);
+  }, [username]);
 
   // Filter projects based on search query
   const filteredProjects = useMemo(() => {
@@ -114,6 +119,7 @@ export default function ProcessedProjects({
           repo: project.repo,
           repo_type: project.repo_type,
           language: project.language,
+          ...(username ? { username } : {}),
         }),
       });
       if (!response.ok) {

@@ -8,6 +8,7 @@ import ThemeToggle from '@/components/theme-toggle';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { RepoInfo } from '@/types/repoinfo';
 import getRepoUrl from '@/utils/getRepoUrl';
+import { useCurrentUsername } from '@/hooks/useCurrentUsername';
 
 // Helper function to add tokens and other parameters to request body
 const addTokensToRequestBody = (
@@ -87,6 +88,9 @@ export default function SlidesPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Current logged-in username (used for per-user wiki cache scoping)
+  const currentUsername = useCurrentUsername();
+
   // Define a type for the wiki content
   interface WikiPage {
     id: string;
@@ -127,6 +131,10 @@ export default function SlidesPage() {
         repo_type: repoInfo.type,
         language: language,
       });
+      // Scope cache lookup to the current user's directory
+      if (currentUsername) {
+        params.append('username', currentUsername);
+      }
       const response = await fetch(`/api/wiki_cache?${params.toString()}`);
 
       if (response.ok) {
@@ -148,7 +156,7 @@ export default function SlidesPage() {
       console.error('Error loading from server cache:', error);
       return null;
     }
-  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language]);
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, currentUsername]);
 
   // Generate slides content
   const generateSlidesContent = useCallback(async () => {
