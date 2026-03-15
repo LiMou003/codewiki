@@ -1,26 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ThemeToggle from '@/components/theme-toggle';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function LandingPage() {
   const router = useRouter();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { isLoggedIn, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('cw_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.username) setIsLoggedIn(true);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const handleGetStarted = () => {
     if (isLoggedIn) {
@@ -31,8 +20,7 @@ export default function LandingPage() {
   };
 
   const handleSignOut = () => {
-    localStorage.removeItem('cw_user');
-    setIsLoggedIn(false);
+    logout();
   };
 
   const features = [
