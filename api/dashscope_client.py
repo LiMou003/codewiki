@@ -298,6 +298,10 @@ class DashscopeClient(ModelClient):
             response.output.embeddings[i].text_index  -> int
         """
         try:
+            # Avoid double parsing when caller already returned EmbedderOutput.
+            if isinstance(response, EmbedderOutput):
+                return response
+
             if response.status_code != 200:
                 error_msg = f"DashScope API error {response.status_code}: {response.message}"
                 log.error(f"🔍 {error_msg}")
@@ -316,7 +320,7 @@ class DashscopeClient(ModelClient):
             return EmbedderOutput(data=data, error=None, raw_response=response)
         except Exception as e:
             log.error(f"🔍 Error parsing DashScope embedding response: {e}")
-            log.error(f"🔍 Raw response details: {repr(response)}")
+            # log.error(f"🔍 Raw response details: {repr(response)}")
             return EmbedderOutput(data=[], error=str(e), raw_response=response)
 
     def convert_inputs_to_api_kwargs(
@@ -743,7 +747,12 @@ class DashScopeEmbedder(DataComponent):
             response = await self.model_client.acall(
                 api_kwargs=api_kwargs, model_type=self.model_type
             )
-            output = self.model_client.parse_embedding_response(response)
+            # EMBEDDER path in DashscopeClient.acall already returns EmbedderOutput.
+            # Keep compatible behavior if another client returns raw provider response.
+            if isinstance(response, EmbedderOutput):
+                output = response
+            else:
+                output = self.model_client.parse_embedding_response(response)
         except Exception as e:
             log.error(f"Error calling the DashScope model: {e}")
             output = EmbedderOutput(error=str(e))

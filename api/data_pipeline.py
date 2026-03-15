@@ -459,18 +459,33 @@ def _get_embedding_vector(embedder, text: str) -> list:
     """
     try:
         result = embedder([text])
-        # adalflow embedders return a list of EmbedderOutput; extract the vector
-        if result and hasattr(result[0], "embedding"):
-            vec = result[0].embedding
-        elif result and hasattr(result[0], "data") and result[0].data:
-            vec = result[0].data[0].embedding
-        else:
-            vec = list(result[0]) if result else []
-        return list(vec) if vec is not None else []
+
+        # 统一成一个对象来解析：支持 EmbedderOutput 或 [EmbedderOutput]
+        item = result[0] if isinstance(result, (list, tuple)) and result else result
+        if item is None:
+            return []
+
+        # 情况1：item.embedding 直接是向量
+        vec = getattr(item, "embedding", None)
+        if vec is not None:
+            return list(vec)
+
+        # 情况2：item.data[0].embedding
+        data = getattr(item, "data", None)
+        if data and isinstance(data, (list, tuple)):
+            first = data[0]
+            vec = getattr(first, "embedding", None)
+            if vec is not None:
+                return list(vec)
+
+        # 情况3：item 本身就是可迭代向量
+        if isinstance(item, (list, tuple)):
+            return list(item)
+
+        return []
     except Exception as exc:
         logger.warning("Failed to embed text snippet: %s", exc)
         return []
-
 
 def split_and_index_to_qdrant(
     documents: List[Document],
@@ -505,48 +520,43 @@ def split_and_index_to_qdrant(
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
 
-    all_payloads: List[dict] = []
-    all_vectors: List[list] = []
+    payloads: List[dict] = []
+    vectors: List[list] = []
 
     for doc in documents:
         meta = doc.meta_data or {}
         file_path = meta.get("file_path", "")
-        is_code = meta.get("is_code", False)
+        is_code = bool(meta.get("is_code", False))
         ext = meta.get("type", "")
 
         if is_code:
             language = EXTENSION_TO_LANGUAGE.get(ext.lower(), ext.lower() or "unknown")
-            chunks: List[CodeChunk] = splitter.split_code(
-                doc.text, file_path, language
-            )
+            chunks = splitter.split_code(doc.text, file_path, language)
         else:
             chunks = split_text_fixed(
-                doc.text, file_path,
+                doc.text,
+                file_path,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
             )
 
         for chunk in chunks:
-            if not chunk.text.strip():
-                continue
             vector = _get_embedding_vector(embedder, chunk.text)
             if not vector:
                 continue
             payload = QdrantManager.chunk_to_payload(chunk)
-            # Carry over any extra metadata from the original document
             payload["is_code"] = is_code
             payload["is_implementation"] = meta.get("is_implementation", False)
-            all_payloads.append(payload)
-            all_vectors.append(vector)
+            payloads.append(payload)
+            vectors.append(vector)
 
-    if all_payloads:
-        qdrant_manager.upsert_chunks(all_payloads, all_vectors)
-        logger.info(
-            "Indexed %d chunks into Qdrant collection '%s'",
-            len(all_payloads),
-            qdrant_manager.collection_name,
-        )
-    return len(all_payloads)
+    qdrant_manager.upsert_chunks(payloads, vectors)
+    logger.info(
+        "Indexed %d chunks into Qdrant collection '%s'",
+        len(payloads),
+        qdrant_manager.collection_name,
+    )
+    return len(payloads)
 
 
 def get_github_file_content(repo_url: str, file_path: str, access_token: str = None) -> str:
@@ -973,34 +983,34 @@ class DatabaseManager:
 
         repo_name = os.path.basename(self.repo_paths["save_repo_dir"])
 
-        # Step 1: Check whether the Qdrant collection already has data by
-        # name, WITHOUT creating the collection as a side-effect.  Only when
-        # the collection is absent or empty do we proceed with the expensive
-        # Tree-sitter splitting + vectorisation pipeline.
+        # Step 1: Check whether a collection for this repository already
+        # exists by name. If it exists, reuse it directly and skip splitting /
+        # vectorisation entirely.
         try:
-            existing_count = QdrantManager.get_point_count(repo_name)
-            if existing_count > 0:
+            if QdrantManager.collection_exists_for_repo(repo_name):
                 logger.info(
-                    "Qdrant collection for '%s' already contains %d chunks; "
+                    "Qdrant collection for '%s' already exists; "
                     "skipping re-indexing.",
                     repo_name,
-                    existing_count,
                 )
-                # Connect to the existing collection (creates the manager
-                # object but does not re-create the underlying collection).
-                embedder = get_embedder(embedder_type=embedder_type)
-                probe = _get_embedding_vector(embedder, "probe")
-                if probe:
-                    self.qdrant_manager = QdrantManager(
-                        repo_name=repo_name, vector_size=len(probe)
-                    )
+                # Reuse existing collection with a placeholder vector size.
+                # When the collection already exists, QdrantManager will not
+                # recreate it and the size value is ignored.
+                self.qdrant_manager = QdrantManager(repo_name=repo_name, vector_size=1)
                 return []
         except Exception as exc:
             logger.warning("Could not check existing Qdrant collection: %s", exc)
 
-        # Step 2: Read raw documents from the repository.  This is done
-        # *before* creating the Qdrant collection so that we only create
-        # (or recreate) the collection once we know there is data to index.
+        # Step 2: New repository path. Create an empty collection first.
+        vector_size = 2560
+
+        self.qdrant_manager = QdrantManager(
+            repo_name=repo_name,
+            vector_size=vector_size,
+        )
+
+        # Step 3: Split and vectorise documents, then store into the
+        # pre-created collection.
         logger.info("Building Qdrant index for '%s'...", repo_name)
         documents = read_all_documents(
             self.repo_paths["save_repo_dir"],
@@ -1025,7 +1035,7 @@ class DatabaseManager:
 
         The operation order matches the required vectorisation workflow:
 
-        1. Create the Qdrant collection (or recreate a stale empty one).
+        1. Collection is already created by ``prepare_db_index``.
         2. Split documents using Tree-sitter (code) / fixed-length (text).
         3. Vectorise each chunk via the configured embedder.
         4. Store the resulting vectors in the Qdrant collection.
@@ -1039,25 +1049,9 @@ class DatabaseManager:
             if embedder_type is None:
                 embedder_type = get_embedder_type()
 
-            # Determine embedding vector size from a probe embedding
-            embedder = get_embedder(embedder_type=embedder_type)
-            probe = _get_embedding_vector(embedder, "probe")
-            if not probe:
-                logger.warning("Could not determine embedding size; skipping Qdrant indexing")
+            if self.qdrant_manager is None:
+                logger.warning("Qdrant manager is not initialized; skipping Qdrant indexing")
                 return
-
-            vector_size = len(probe)
-            repo_name = os.path.basename(self.repo_paths["save_repo_dir"])
-
-            # Step 1: Create (or recreate) the Qdrant collection before any
-            # splitting / vectorisation work takes place.  ``recreate_collection``
-            # is used here so that any stale empty collection left over from a
-            # previously interrupted indexing run is cleanly replaced.
-            self.qdrant_manager = QdrantManager(
-                repo_name=repo_name,
-                vector_size=vector_size,
-            )
-            self.qdrant_manager.recreate_collection()
 
             # Average characters per word used to convert the word-based
             # text_splitter chunk_size setting into a character count.

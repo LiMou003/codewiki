@@ -258,6 +258,45 @@ class QdrantManager:
     # ------------------------------------------------------------------
 
     @classmethod
+    def collection_exists_for_repo(
+        cls,
+        repo_name: str,
+        qdrant_url: Optional[str] = None,
+        qdrant_api_key: Optional[str] = None,
+    ) -> bool:
+        """Return whether the collection for *repo_name* already exists.
+
+        This helper never creates collections and is intended for control-flow
+        checks before deciding whether indexing is needed.
+        """
+        url = qdrant_url or os.environ.get("QDRANT_URL")
+        if not url:
+            # In-memory clients are isolated per process/client; treat as not
+            # existing so a fresh collection is created in the current run.
+            logger.debug(
+                "No QDRANT_URL set; treating repo '%s' collection as non-existent.",
+                repo_name,
+            )
+            return False
+
+        api_key = qdrant_api_key or os.environ.get("QDRANT_API_KEY")
+        collection_name = _collection_name(repo_name)
+
+        try:
+            from qdrant_client import QdrantClient
+
+            client = QdrantClient(url=url, api_key=api_key or None)
+            existing = {c.name for c in client.get_collections().collections}
+            return collection_name in existing
+        except Exception as exc:
+            logger.warning(
+                "Could not query Qdrant for collection existence '%s': %s",
+                collection_name,
+                exc,
+            )
+            return False
+
+    @classmethod
     def get_point_count(
         cls,
         repo_name: str,
