@@ -6,12 +6,13 @@ Provides:
     POST /auth/login     — obtain a JWT access token
     GET  /auth/me        — return the authenticated user's profile (requires JWT)
 
-Storage: SQLite via SQLAlchemy async engine (file: codewiki_auth.db in the api/ directory).
-Passwords are hashed with bcrypt.  Tokens are signed JWTs (HS256).
+Storage: MySQL (or SQLite fallback) via SQLAlchemy async engine.
+Set AUTH_DATABASE_URL to connect to your local MySQL database, e.g.:
+    mysql+aiomysql://user:password@localhost/codewiki
+Passwords are hashed with PBKDF2-SHA256.  Tokens are signed JWTs (HS256).
 """
 
 import os
-import uuid
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -21,9 +22,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr, Field
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import Boolean, Column, DateTime, String, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
+
+from api.database.models import Base, User as _UserRow
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
     os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 )
 
-# SQLite database placed next to this file
+# MySQL database connection (falls back to SQLite for local development without MySQL)
 _DB_PATH = os.path.join(os.path.dirname(__file__), "codewiki_auth.db")
 DATABASE_URL = os.environ.get("AUTH_DATABASE_URL", f"sqlite+aiosqlite:///{_DB_PATH}")
 
@@ -45,40 +47,20 @@ DATABASE_URL = os.environ.get("AUTH_DATABASE_URL", f"sqlite+aiosqlite:///{_DB_PA
 # Database
 # ---------------------------------------------------------------------------
 
+# Build engine kwargs depending on dialect
+_engine_kwargs: dict = {"echo": False, "future": True}
+if DATABASE_URL.startswith("mysql"):
+    # Recommended pool settings for MySQL async connections
+    _engine_kwargs.update({"pool_recycle": 3600, "pool_pre_ping": True})
 
-class _Base(DeclarativeBase):
-    pass
-
-
-class _UserRow(_Base):
-    __tablename__ = "users"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    username = Column(String(64), nullable=False, unique=True)
-    email = Column(String(255), nullable=False, unique=True)
-    password_hash = Column(String(255), nullable=False)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(
-        DateTime,
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-    )
-    updated_at = Column(
-        DateTime,
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-    )
-
-
-_engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+_engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 _AsyncSession = async_sessionmaker(_engine, expire_on_commit=False)
 
 
 async def init_db() -> None:
     """Create tables if they don't exist yet."""
     async with _engine.begin() as conn:
-        await conn.run_sync(_Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all)
 
 
 async def get_db() -> AsyncSession:  # type: ignore[override]

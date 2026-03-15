@@ -11,6 +11,7 @@ import ProcessedProjects from '@/components/ProcessedProjects';
 import { extractUrlPath, extractUrlDomain } from '@/utils/urlDecoder';
 import { useProcessedProjects } from '@/hooks/useProcessedProjects';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Define the demo mermaid charts outside the component
 const DEMO_FLOW_CHART = `graph TD
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const router = useRouter();
   const { language, setLanguage, messages, supportedLanguages } = useLanguage();
   const { projects, isLoading: projectsLoading } = useProcessedProjects();
+  const { logout } = useAuth();
 
   // User state from localStorage
   const [user, setUser] = useState<{ username: string; email: string } | null>(null);
@@ -59,7 +61,7 @@ export default function Dashboard() {
   }, []);
 
   const handleSignOut = () => {
-    localStorage.removeItem('cw_user');
+    logout();
     setUser(null);
     router.push('/');
   };
