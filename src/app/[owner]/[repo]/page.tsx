@@ -173,6 +173,32 @@ const createBitbucketHeaders = (bitbucketToken: string): HeadersInit => {
   return headers;
 };
 
+// User nav link component for the header bar
+function UserNavLink() {
+  const [user, setUser] = React.useState<{ username: string } | null>(null);
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem('cw_user');
+      if (stored) setUser(JSON.parse(stored));
+    } catch { /* ignore */ }
+  }, []);
+  if (user) {
+    return (
+      <Link href="/user" className="flex items-center gap-1.5 text-sm text-[var(--accent-primary)] hover:text-[var(--highlight)] transition-colors">
+        <div className="w-6 h-6 rounded-full bg-[var(--accent-primary)] text-white flex items-center justify-center text-xs font-bold">
+          {user.username.charAt(0).toUpperCase()}
+        </div>
+        {user.username}
+      </Link>
+    );
+  }
+  return (
+    <Link href="/login" className="text-sm text-[var(--muted)] hover:text-[var(--accent-primary)] transition-colors">
+      Sign in
+    </Link>
+  );
+}
+
 
 export default function RepoWikiPage() {
   // Get route parameters and search params
@@ -1945,16 +1971,17 @@ IMPORTANT:
       <header className="max-w-[90%] xl:max-w-[1400px] mx-auto mb-8 h-fit w-full">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-[var(--accent-primary)] hover:text-[var(--highlight)] flex items-center gap-1.5 transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5">
+            <Link href="/dashboard" className="text-[var(--accent-primary)] hover:text-[var(--highlight)] flex items-center gap-1.5 transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5">
               <FaHome /> {messages.repoPage?.home || 'Home'}
             </Link>
           </div>
+          <UserNavLink />
         </div>
       </header>
 
       <main className="flex-1 max-w-[90%] xl:max-w-[1400px] mx-auto overflow-y-auto">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-8 bg-[var(--card-bg)] rounded-lg shadow-custom card-japanese">
+          <div className="flex flex-col items-center justify-center p-8 bg-[var(--card-bg)] rounded-lg shadow-custom card-modern">
             <div className="relative mb-6">
               <div className="absolute -inset-4 bg-[var(--accent-primary)]/10 rounded-full blur-md animate-pulse"></div>
               <div className="relative flex items-center justify-center">
@@ -2032,7 +2059,7 @@ IMPORTANT:
             <div className="mt-5">
               <Link
                 href="/"
-                className="btn-japanese px-5 py-2 inline-flex items-center gap-1.5"
+                className="btn-primary px-5 py-2 inline-flex items-center gap-1.5"
               >
                 <FaHome className="text-sm" />
                 {messages.repoPage?.backToHome || 'Back to Home'}
@@ -2040,7 +2067,7 @@ IMPORTANT:
             </div>
           </div>
         ) : wikiStructure ? (
-          <div className="h-full overflow-y-auto flex flex-col lg:flex-row gap-4 w-full overflow-hidden bg-[var(--card-bg)] rounded-lg shadow-custom card-japanese">
+          <div className="h-full overflow-y-auto flex flex-col lg:flex-row gap-4 w-full overflow-hidden bg-[var(--card-bg)] rounded-lg shadow-custom card-modern">
             {/* Wiki Navigation */}
             <div className="h-full w-full lg:w-[280px] xl:w-[320px] flex-shrink-0 bg-[var(--background)]/50 rounded-lg rounded-r-none p-5 border-b lg:border-b-0 lg:border-r border-[var(--border-color)] overflow-y-auto">
               <h3 className="text-lg font-bold text-[var(--foreground)] mb-3 font-serif">{wikiStructure.title}</h3>
@@ -2108,7 +2135,7 @@ IMPORTANT:
                     <button
                       onClick={() => exportWiki('markdown')}
                       disabled={isExporting}
-                      className="btn-japanese flex items-center text-xs px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn-primary flex items-center text-xs px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FaDownload className="mr-2" />
                       {messages.repoPage?.exportAsMarkdown || 'Export as Markdown'}
