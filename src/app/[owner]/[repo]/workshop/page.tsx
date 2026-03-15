@@ -78,6 +78,18 @@ export default function WorkshopPage() {
   const [workshopContent, setWorkshopContent] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  // Current logged-in username (used for per-user wiki cache scoping)
+  const [currentUsername, setCurrentUsername] = useState<string>('');
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('cw_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setCurrentUsername(parsed.username || '');
+      }
+    } catch { /* ignore */ }
+  }, []);
   // Define a type for the wiki content
   interface WikiPage {
     id: string;
@@ -118,6 +130,10 @@ export default function WorkshopPage() {
         repo_type: repoInfo.type,
         language: language,
       });
+      // Scope cache lookup to the current user's directory
+      if (currentUsername) {
+        params.append('username', currentUsername);
+      }
       const response = await fetch(`/api/wiki_cache?${params.toString()}`);
 
       if (response.ok) {
@@ -139,7 +155,7 @@ export default function WorkshopPage() {
       console.error('Error loading from server cache:', error);
       return null;
     }
-  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language]);
+  }, [repoInfo.owner, repoInfo.repo, repoInfo.type, language, currentUsername]);
 
   // Generate workshop content
   const generateWorkshopContent = useCallback(async () => {

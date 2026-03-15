@@ -306,6 +306,18 @@ export default function RepoWikiPage() {
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
+  // Current logged-in username (used for per-user wiki cache scoping)
+  const [currentUsername, setCurrentUsername] = useState<string>('');
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('cw_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setCurrentUsername(parsed.username || '');
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   // Default branch state
   const [defaultBranch, setDefaultBranch] = useState<string>('main');
 
@@ -1625,6 +1637,11 @@ IMPORTANT:
         params.append('excluded_files', modelExcludedFiles);
       }
 
+      // Scope cache deletion to the current user's directory
+      if (currentUsername) {
+        params.append('username', currentUsername);
+      }
+
       if(authRequired && !authCode) {
         setIsLoading(false);
         console.error("Authorization code is required");
@@ -1728,6 +1745,10 @@ IMPORTANT:
             language: language,
             comprehensive: isComprehensiveView.toString(),
           });
+          // Scope cache lookup to the current user's directory
+          if (currentUsername) {
+            params.append('username', currentUsername);
+          }
           const response = await fetch(`/api/wiki_cache?${params.toString()}`);
 
           if (response.ok) {
@@ -1931,7 +1952,9 @@ IMPORTANT:
               wiki_structure: structureToCache,
               generated_pages: generatedPages,
               provider: selectedProviderState,
-              model: selectedModelState
+              model: selectedModelState,
+              // Scope the cache to the current user's directory
+              ...(currentUsername ? { username: currentUsername } : {}),
             };
             const response = await fetch(`/api/wiki_cache`, {
               method: 'POST',
@@ -1954,7 +1977,7 @@ IMPORTANT:
     };
 
     saveCache();
-  }, [isLoading, error, wikiStructure, generatedPages, effectiveRepoInfo.owner, effectiveRepoInfo.repo, effectiveRepoInfo.type, effectiveRepoInfo.repoUrl, repoUrl, language, isComprehensiveView]);
+  }, [isLoading, error, wikiStructure, generatedPages, effectiveRepoInfo.owner, effectiveRepoInfo.repo, effectiveRepoInfo.type, effectiveRepoInfo.repoUrl, repoUrl, language, isComprehensiveView, currentUsername]);
 
   const handlePageSelect = (pageId: string) => {
     if (currentPageId != pageId) {

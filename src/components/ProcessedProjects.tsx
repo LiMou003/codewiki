@@ -58,7 +58,20 @@ export default function ProcessedProjects({
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch('/api/wiki/projects');
+        let username = '';
+        try {
+          const stored = localStorage.getItem('cw_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            username = parsed.username || '';
+          }
+        } catch {
+          // ignore
+        }
+        const url = username
+          ? `/api/wiki/projects?username=${encodeURIComponent(username)}`
+          : '/api/wiki/projects';
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`Failed to fetch projects: ${response.statusText}`);
         }
@@ -106,6 +119,16 @@ export default function ProcessedProjects({
       return;
     }
     try {
+      let username = '';
+      try {
+        const stored = localStorage.getItem('cw_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          username = parsed.username || '';
+        }
+      } catch {
+        // ignore
+      }
       const response = await fetch('/api/wiki/projects', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -114,6 +137,7 @@ export default function ProcessedProjects({
           repo: project.repo,
           repo_type: project.repo_type,
           language: project.language,
+          ...(username ? { username } : {}),
         }),
       });
       if (!response.ok) {

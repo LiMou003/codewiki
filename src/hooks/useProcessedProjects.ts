@@ -20,7 +20,24 @@ export function useProcessedProjects() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch('/api/wiki/projects');
+        // Retrieve the logged-in username so the backend can scope results to
+        // that user's cache directory.
+        let username = '';
+        try {
+          const stored = localStorage.getItem('cw_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            username = parsed.username || '';
+          }
+        } catch {
+          // ignore – proceed without username
+        }
+
+        const url = username
+          ? `/api/wiki/projects?username=${encodeURIComponent(username)}`
+          : '/api/wiki/projects';
+
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`Failed to fetch projects: ${response.statusText}`);
         }

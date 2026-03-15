@@ -16,6 +16,7 @@ interface DeleteProjectCachePayload {
   repo: string;
   repo_type: string;
   language: string;
+  username?: string;
 }
 
 /** Type guard to validate DeleteProjectCachePayload at runtime */
@@ -35,9 +36,17 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_HOST || 'http://localhost:
 const PROJECTS_API_ENDPOINT = `${PYTHON_BACKEND_URL}/api/processed_projects`;
 const CACHE_API_ENDPOINT = `${PYTHON_BACKEND_URL}/api/wiki_cache`;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const response = await fetch(PROJECTS_API_ENDPOINT, {
+    // Forward the username query parameter to the Python backend so it can
+    // scope the project listing to the current user's cache directory.
+    const { searchParams } = new URL(request.url);
+    const username = searchParams.get('username') || '';
+    const backendUrl = username
+      ? `${PROJECTS_API_ENDPOINT}?username=${encodeURIComponent(username)}`
+      : PROJECTS_API_ENDPOINT;
+
+    const response = await fetch(backendUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -81,8 +90,11 @@ export async function DELETE(request: Request) {
         { status: 400 }
       );
     }
-    const { owner, repo, repo_type, language } = body;
+    const { owner, repo, repo_type, language, username } = body;
     const params = new URLSearchParams({ owner, repo, repo_type, language });
+    if (username) {
+      params.set('username', username);
+    }
     const response = await fetch(`${CACHE_API_ENDPOINT}?${params}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
