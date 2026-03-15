@@ -34,9 +34,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * Demo-only login: accepts any non-empty credentials and stores them in localStorage.
+   * NOTE: This is a frontend simulation — no credentials are validated against a real database.
+   * Replace with a real API call once backend authentication is implemented.
+   * See BACKEND_CHANGES_REQUIRED.md for full integration details.
+   */
   const login = async (username: string, password: string): Promise<boolean> => {
     if (!username || !password) return false;
-    // Try to use previously registered email if available
+    // Prefer the previously registered email if the username matches
     let email = username + '@user.local';
     try {
       const existing = localStorage.getItem('cw_user');
