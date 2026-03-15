@@ -112,7 +112,7 @@ def test_user_settings_instantiation():
     """UserSettings model should be instantiable with explicit values."""
     from api.database.models import UserSettings
 
-    uid = uuid.uuid4()
+    uid = str(uuid.uuid4())
     settings = UserSettings(
         user_id=uid,
         preferred_language="zh",
@@ -129,7 +129,7 @@ def test_conversation_instantiation():
     """Conversation model should be instantiable with explicit values."""
     from api.database.models import Conversation
 
-    uid = uuid.uuid4()
+    uid = str(uuid.uuid4())
     conv = Conversation(
         user_id=uid,
         repo_owner="octocat",
@@ -146,7 +146,7 @@ def test_conversation_message_instantiation():
     """ConversationMessage model should be instantiable."""
     from api.database.models import ConversationMessage
 
-    cid = uuid.uuid4()
+    cid = str(uuid.uuid4())
     msg = ConversationMessage(
         conversation_id=cid,
         role="user",

@@ -7,7 +7,7 @@ SQLAlchemy ORM 模型 — CodeWiki 用户认证与对话历史
     from sqlalchemy.orm import Session
     from api.database.models import Base, User, UserSettings, Conversation, ConversationMessage
 
-    engine = create_engine("postgresql+psycopg2://user:pass@localhost/codewiki")
+    engine = create_engine("mysql+pymysql://user:pass@localhost/codewiki?charset=utf8mb4")
     Base.metadata.create_all(engine)
 
     with Session(engine) as session:
@@ -27,17 +27,21 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, relationship
 from sqlalchemy.sql import func
 
 
 def _utcnow() -> datetime:
-    """Return the current UTC datetime (timezone-aware)."""
-    return datetime.now(timezone.utc)
+    """Return the current UTC datetime as a timezone-naive value.
+
+    MySQL DATETIME columns do not store timezone information.
+    All timestamps are stored and interpreted as UTC.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -53,9 +57,9 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(
-        UUID(as_uuid=True),
+        String(36),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         comment="用户唯一标识（UUID）",
     )
     username = Column(
@@ -82,14 +86,14 @@ class User(Base):
         comment="账户是否启用；False 表示已停用或待验证",
     )
     created_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         nullable=False,
         default=_utcnow,
         server_default=func.now(),
         comment="账户创建时间",
     )
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         nullable=False,
         default=_utcnow,
         onupdate=_utcnow,
@@ -123,13 +127,13 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
 
     id = Column(
-        UUID(as_uuid=True),
+        String(36),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         comment="配置记录唯一标识（UUID）",
     )
     user_id = Column(
-        UUID(as_uuid=True),
+        String(36),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
@@ -159,19 +163,19 @@ class UserSettings(Base):
         comment="是否启用通知",
     )
     extra_config = Column(
-        JSONB,
+        JSON,
         nullable=True,
         comment="扩展配置（JSON），用于存储未来新增的偏好字段",
     )
     created_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         nullable=False,
         default=_utcnow,
         server_default=func.now(),
         comment="配置创建时间",
     )
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         nullable=False,
         default=_utcnow,
         onupdate=_utcnow,
@@ -195,13 +199,13 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(
-        UUID(as_uuid=True),
+        String(36),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         comment="对话唯一标识（UUID）",
     )
     user_id = Column(
-        UUID(as_uuid=True),
+        String(36),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         comment="发起对话的用户 ID，外键到 users.id",
@@ -228,14 +232,14 @@ class Conversation(Base):
         comment="对话标题，可由系统自动生成或用户手动设置",
     )
     created_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         nullable=False,
         default=_utcnow,
         server_default=func.now(),
         comment="对话创建时间",
     )
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         nullable=False,
         default=_utcnow,
         onupdate=_utcnow,
@@ -271,13 +275,13 @@ class ConversationMessage(Base):
     )
 
     id = Column(
-        UUID(as_uuid=True),
+        String(36),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         comment="消息唯一标识（UUID）",
     )
     conversation_id = Column(
-        UUID(as_uuid=True),
+        String(36),
         ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=False,
         comment="所属对话 ID，外键到 conversations.id",
@@ -298,7 +302,7 @@ class ConversationMessage(Base):
         comment="消息的 token 数量（可选，用于计费统计）",
     )
     created_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         nullable=False,
         default=_utcnow,
         server_default=func.now(),
@@ -316,3 +320,4 @@ class ConversationMessage(Base):
             f"<ConversationMessage id={self.id} "
             f"role={self.role!r} conversation_id={self.conversation_id}>"
         )
+
