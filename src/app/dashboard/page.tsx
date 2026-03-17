@@ -114,7 +114,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error loading config from localStorage:', error);
     }
-    // Excludes stable setters (setSelectedLanguage/setProvider/setModel/setExcludedDirs/setIncludedFiles, etc.) to avoid exhaustive-deps noise; reruns when language changes
+    // Excludes stable setters (setSelectedLanguage, setProvider, setModel, setIsComprehensiveView, setIsCustomModel, setCustomModel, setSelectedPlatform, setAccessToken, setExcludedDirs, setExcludedFiles, setIncludedDirs, setIncludedFiles) to avoid exhaustive-deps noise; reruns when language changes
   }, [language]);
 
   const handleRepositoryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
