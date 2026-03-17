@@ -2155,14 +2155,6 @@ IMPORTANT:
                       <FaDownload className="mr-2" />
                       {messages.repoPage?.exportAsMarkdown || 'Export as Markdown'}
                     </button>
-                    <button
-                      onClick={() => exportWiki('json')}
-                      disabled={isExporting}
-                      className="flex items-center text-xs px-3 py-2 bg-[var(--background)] text-[var(--foreground)] rounded-md hover:bg-[var(--background)]/80 disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-color)] transition-colors"
-                    >
-                      <FaFileExport className="mr-2" />
-                      {messages.repoPage?.exportAsJson || 'Export as JSON'}
-                    </button>
                   </div>
                   {exportError && (
                     <div className="mt-2 text-xs text-[var(--highlight)]">

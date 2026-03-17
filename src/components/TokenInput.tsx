@@ -56,7 +56,7 @@ export default function TokenInput({
                 >
                   <span className="text-sm">GitHub</span>
                 </button>
-                <button
+                {/* <button
                   type="button"
                   onClick={() => setSelectedPlatform('gitlab')}
                   className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md border transition-all ${selectedPlatform === 'gitlab'
@@ -75,7 +75,7 @@ export default function TokenInput({
                     }`}
                 >
                   <span className="text-sm">Bitbucket</span>
-                </button>
+                </button> */}
               </div>
             </div>
           )}
