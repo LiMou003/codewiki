@@ -114,7 +114,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error loading config from localStorage:', error);
     }
-    // language dependency ensures cached config is re-applied when locale changes
+    // language dependency ensures cached config is loaded when language state changes
   }, [language]);
 
   const handleRepositoryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,7 +148,7 @@ export default function Dashboard() {
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
-  const showProjectsList = !projectsLoading && projects.length > 0;
+  const shouldShowProjects = !projectsLoading && projects.length > 0;
 
   useEffect(() => {
     setLanguage(selectedLanguage);
@@ -514,9 +514,9 @@ export default function Dashboard() {
             <div className="card-modern p-6 shadow-custom">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{showProjectsList ? t('projects.browseExisting') : t('home.welcomeTagline')}</p>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{shouldShowProjects ? t('projects.browseExisting') : t('home.welcomeTagline')}</p>
                   <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
-                    {showProjectsList ? t('projects.existingProjects') : t('home.welcome')}
+                    {shouldShowProjects ? t('projects.existingProjects') : t('home.welcome')}
                   </h2>
                 </div>
                 <div className="flex items-center gap-2 text-[var(--muted)] text-xs">
@@ -525,7 +525,7 @@ export default function Dashboard() {
                   <span className="px-2 py-1 rounded-full bg-[var(--accent-secondary)] border border-[var(--border-color)]">BitBucket</span>
                 </div>
               </div>
-              {showProjectsList ? (
+              {shouldShowProjects ? (
                 <ProcessedProjects
                   showHeader={false}
                   maxItems={6}
