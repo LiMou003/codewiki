@@ -114,6 +114,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error loading config from localStorage:', error);
     }
+    // language dependency ensures cached config is re-applied when locale changes
   }, [language]);
 
   const handleRepositoryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -447,7 +448,7 @@ export default function Dashboard() {
                     onClick={() => setIsConfigModalOpen(true)}
                     className="text-[var(--accent-primary)] text-sm font-medium hover:underline"
                   >
-                    {t('common.generateWiki')}前先调整配置
+                    {t('form.configureWiki')}
                   </button>
                 </div>
               </form>
