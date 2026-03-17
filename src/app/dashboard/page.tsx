@@ -114,7 +114,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error loading config from localStorage:', error);
     }
-    // Intentionally excludes stable setState functions to avoid exhaustive-deps noise; reruns when language changes
+    // Excludes stable setters (setSelectedLanguage/setProvider/setModel/setExcludedDirs/setIncludedFiles, etc.) to avoid exhaustive-deps noise; reruns when language changes
   }, [language]);
 
   const handleRepositoryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,7 +148,7 @@ export default function Dashboard() {
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
-  const showExistingProjects = !projectsLoading && projects.length > 0;
+  const hasExistingProjects = !projectsLoading && projects.length > 0;
 
   useEffect(() => {
     setLanguage(selectedLanguage);
@@ -514,9 +514,9 @@ export default function Dashboard() {
             <div className="card-modern p-6 shadow-custom">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{showExistingProjects ? t('projects.browseExisting') : t('home.welcomeTagline')}</p>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{hasExistingProjects ? t('projects.browseExisting') : t('home.welcomeTagline')}</p>
                   <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
-                    {showExistingProjects ? t('projects.existingProjects') : t('home.welcome')}
+                    {hasExistingProjects ? t('projects.existingProjects') : t('home.welcome')}
                   </h2>
                 </div>
                 <div className="flex items-center gap-2 text-[var(--muted)] text-xs">
@@ -525,7 +525,7 @@ export default function Dashboard() {
                   <span className="px-2 py-1 rounded-full bg-[var(--accent-secondary)] border border-[var(--border-color)]">BitBucket</span>
                 </div>
               </div>
-              {showExistingProjects ? (
+              {hasExistingProjects ? (
                 <ProcessedProjects
                   showHeader={false}
                   maxItems={6}
