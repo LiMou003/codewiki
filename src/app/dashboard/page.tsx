@@ -148,7 +148,7 @@ export default function Dashboard() {
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
-  const hasLoadedProjects = !projectsLoading && projects.length > 0;
+  const showProjectsList = !projectsLoading && projects.length > 0;
 
   useEffect(() => {
     setLanguage(selectedLanguage);
@@ -317,7 +317,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen paper-texture flex flex-col">
       {/* Top Navbar */}
-      <nav className="sticky top-0 z-50 bg-[var(--background)]/95 border-b border-[var(--border-color)] shadow-custom">
+      <nav className="sticky top-0 z-50 bg-[var(--background)] border-b border-[var(--border-color)] shadow-custom">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
           <Link href="/" className="flex items-center gap-2 font-bold text-lg text-[var(--accent-primary)]">
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -514,9 +514,9 @@ export default function Dashboard() {
             <div className="card-modern p-6 shadow-custom">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{hasLoadedProjects ? t('projects.browseExisting') : t('home.welcomeTagline')}</p>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{showProjectsList ? t('projects.browseExisting') : t('home.welcomeTagline')}</p>
                   <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
-                    {hasLoadedProjects ? t('projects.existingProjects') : t('home.welcome')}
+                    {showProjectsList ? t('projects.existingProjects') : t('home.welcome')}
                   </h2>
                 </div>
                 <div className="flex items-center gap-2 text-[var(--muted)] text-xs">
@@ -525,7 +525,7 @@ export default function Dashboard() {
                   <span className="px-2 py-1 rounded-full bg-[var(--accent-secondary)] border border-[var(--border-color)]">BitBucket</span>
                 </div>
               </div>
-              {hasLoadedProjects ? (
+              {showProjectsList ? (
                 <ProcessedProjects
                   showHeader={false}
                   maxItems={6}
