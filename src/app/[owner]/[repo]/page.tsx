@@ -13,7 +13,7 @@ import { extractUrlDomain, extractUrlPath } from '@/utils/urlDecoder';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FaBitbucket, FaBookOpen, FaComments, FaDownload, FaExclamationTriangle, FaFileExport, FaFolder, FaGithub, FaGitlab, FaHome, FaSync, FaTimes } from 'react-icons/fa';
+import { FaBookOpen, FaComments, FaDownload, FaExclamationTriangle, FaFileExport, FaFolder, FaGithub, FaHome, FaSync, FaTimes } from 'react-icons/fa';
 import { useCurrentUsername } from '@/hooks/useCurrentUsername';
 // Define the WikiSection and WikiStructure types directly in this file
 // since the imported types don't have the sections and rootSections properties
@@ -150,30 +150,6 @@ const createGithubHeaders = (githubToken: string): HeadersInit => {
   return headers;
 };
 
-const createGitlabHeaders = (gitlabToken: string): HeadersInit => {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  if (gitlabToken) {
-    headers['PRIVATE-TOKEN'] = gitlabToken;
-  }
-
-  return headers;
-};
-
-const createBitbucketHeaders = (bitbucketToken: string): HeadersInit => {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  if (bitbucketToken) {
-    headers['Authorization'] = `Bearer ${bitbucketToken}`;
-  }
-
-  return headers;
-};
-
 // User nav link component for the header bar
 function UserNavLink() {
   const [user, setUser] = React.useState<{ username: string } | null>(null);
@@ -228,13 +204,9 @@ export default function RepoWikiPage() {
       return '';
     }
   })();
-  const repoType = repoHost?.includes('bitbucket')
-    ? 'bitbucket'
-    : repoHost?.includes('gitlab')
-      ? 'gitlab'
-      : repoHost?.includes('github')
-        ? 'github'
-        : searchParams.get('type') || 'github';
+  const repoType = repoHost?.includes('github')
+    ? 'github'
+    : searchParams.get('type') || 'github';
 
   // Import language context for translations
   const { messages } = useLanguage();
@@ -332,12 +304,6 @@ export default function RepoWikiPage() {
       if (hostname === 'github.com' || hostname.includes('github')) {
         // GitHub URL format: https://github.com/owner/repo/blob/branch/path
         return `${repoUrl}/blob/${defaultBranch}/${filePath}`;
-      } else if (hostname === 'gitlab.com' || hostname.includes('gitlab')) {
-        // GitLab URL format: https://gitlab.com/owner/repo/-/blob/branch/path
-        return `${repoUrl}/-/blob/${defaultBranch}/${filePath}`;
-      } else if (hostname === 'bitbucket.org' || hostname.includes('bitbucket')) {
-        // Bitbucket URL format: https://bitbucket.org/owner/repo/src/branch/path
-        return `${repoUrl}/src/${defaultBranch}/${filePath}`;
       }
     } catch (error) {
       console.warn('Error generating file URL:', error);
@@ -1346,170 +1312,6 @@ IMPORTANT:
           console.warn('Could not fetch README.md, continuing with empty README', err);
         }
       }
-      else if (effectiveRepoInfo.type === 'gitlab') {
-        // GitLab API approach
-        const projectPath = extractUrlPath(effectiveRepoInfo.repoUrl ?? '')?.replace(/\.git$/, '') || `${owner}/${repo}`;
-        const projectDomain = extractUrlDomain(effectiveRepoInfo.repoUrl ?? "https://gitlab.com");
-        const encodedProjectPath = encodeURIComponent(projectPath);
-
-        const headers = createGitlabHeaders(currentToken);
-
-        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-        const filesData: any[] = [];
-
-        try {
-          // Step 1: Get project info to determine default branch
-          let projectInfoUrl: string;
-          let defaultBranchLocal = 'main'; // fallback
-          try {
-            const validatedUrl = new URL(projectDomain ?? ''); // Validate domain
-            projectInfoUrl = `${validatedUrl.origin}/api/v4/projects/${encodedProjectPath}`;
-          } catch (err) {
-            throw new Error(`Invalid project domain URL: ${projectDomain}`);
-          }
-          const projectInfoRes = await fetch(projectInfoUrl, { headers });
-
-          if (!projectInfoRes.ok) {
-            const errorData = await projectInfoRes.text();
-            throw new Error(`GitLab project info error: Status ${projectInfoRes.status}, Response: ${errorData}`);
-          }
-
-          const projectInfo = await projectInfoRes.json();
-          defaultBranchLocal = projectInfo.default_branch || 'main';
-          console.log(`Found GitLab default branch: ${defaultBranchLocal}`);
-          // Store the default branch in state
-          setDefaultBranch(defaultBranchLocal);
-
-          // Step 2: Paginate to fetch full file tree
-          let page = 1;
-          let morePages = true;
-          
-          while (morePages) {
-            const apiUrl = `${projectInfoUrl}/repository/tree?recursive=true&per_page=100&page=${page}`;
-            const response = await fetch(apiUrl, { headers });
-
-            if (!response.ok) {
-                const errorData = await response.text();
-              throw new Error(`Error fetching GitLab repository structure (page ${page}): ${errorData}`);
-            }
-
-            const pageData = await response.json();
-            filesData.push(...pageData);
-
-            const nextPage = response.headers.get('x-next-page');
-            morePages = !!nextPage;
-            page = nextPage ? parseInt(nextPage, 10) : page + 1;
-        }
-
-          if (!Array.isArray(filesData) || filesData.length === 0) {
-            throw new Error('Could not fetch repository structure. Repository might be empty or inaccessible.');
-        }
-
-          // Step 3: Format file paths
-        fileTreeData = filesData
-          .filter((item: { type: string; path: string }) => item.type === 'blob')
-          .map((item: { type: string; path: string }) => item.path)
-          .join('\n');
-
-          // Step 4: Try to fetch README.md content
-          const readmeUrl = `${projectInfoUrl}/repository/files/README.md/raw`;
-            try {
-            const readmeResponse = await fetch(readmeUrl, { headers });
-              if (readmeResponse.ok) {
-                readmeContent = await readmeResponse.text();
-                console.log('Successfully fetched GitLab README.md');
-              } else {
-              console.warn(`Could not fetch GitLab README.md status: ${readmeResponse.status}`);
-              }
-            } catch (err) {
-            console.warn(`Error fetching GitLab README.md:`, err);
-            }
-        } catch (err) {
-          console.error("Error during GitLab repository tree retrieval:", err);
-          throw err;
-        }
-      }
-      else if (effectiveRepoInfo.type === 'bitbucket') {
-        // Bitbucket API approach
-        const repoPath = extractUrlPath(effectiveRepoInfo.repoUrl ?? '') ?? `${owner}/${repo}`;
-        const encodedRepoPath = encodeURIComponent(repoPath);
-
-        // Try to get the file tree for common branch names
-        let filesData = null;
-        let apiErrorDetails = '';
-        let defaultBranchLocal = '';
-        const headers = createBitbucketHeaders(currentToken);
-
-        // First get project info to determine default branch
-        const projectInfoUrl = `https://api.bitbucket.org/2.0/repositories/${encodedRepoPath}`;
-        try {
-          const response = await fetch(projectInfoUrl, { headers });
-
-          const responseText = await response.text();
-
-          if (response.ok) {
-            const projectData = JSON.parse(responseText);
-            defaultBranchLocal = projectData.mainbranch.name;
-            // Store the default branch in state
-            setDefaultBranch(defaultBranchLocal);
-
-            const apiUrl = `https://api.bitbucket.org/2.0/repositories/${encodedRepoPath}/src/${defaultBranchLocal}/?recursive=true&per_page=100`;
-            try {
-              const response = await fetch(apiUrl, {
-                headers
-              });
-
-              const structureResponseText = await response.text();
-
-              if (response.ok) {
-                filesData = JSON.parse(structureResponseText);
-              } else {
-                const errorData = structureResponseText;
-                apiErrorDetails = `Status: ${response.status}, Response: ${errorData}`;
-              }
-            } catch (err) {
-              console.error(`Network error fetching Bitbucket branch ${defaultBranchLocal}:`, err);
-            }
-          } else {
-            const errorData = responseText;
-            apiErrorDetails = `Status: ${response.status}, Response: ${errorData}`;
-          }
-        } catch (err) {
-          console.error("Network error fetching Bitbucket project info:", err);
-        }
-
-        if (!filesData || !Array.isArray(filesData.values) || filesData.values.length === 0) {
-          if (apiErrorDetails) {
-            throw new Error(`Could not fetch repository structure. Bitbucket API Error: ${apiErrorDetails}`);
-          } else {
-            throw new Error('Could not fetch repository structure. Repository might not exist, be empty or private.');
-          }
-        }
-
-        // Convert files data to a string representation
-        fileTreeData = filesData.values
-          .filter((item: { type: string; path: string }) => item.type === 'commit_file')
-          .map((item: { type: string; path: string }) => item.path)
-          .join('\n');
-
-        // Try to fetch README.md content
-        try {
-          const headers = createBitbucketHeaders(currentToken);
-
-          const readmeResponse = await fetch(`https://api.bitbucket.org/2.0/repositories/${encodedRepoPath}/src/${defaultBranchLocal}/README.md`, {
-            headers
-          });
-
-          if (readmeResponse.ok) {
-            readmeContent = await readmeResponse.text();
-          } else {
-            console.warn(`Could not fetch Bitbucket README.md, status: ${readmeResponse.status}`);
-          }
-        } catch (err) {
-          console.warn('Could not fetch Bitbucket README.md, continuing with empty README', err);
-        }
-      }
-
       // Now determine the wiki structure
       await determineWikiStructure(fileTreeData, readmeContent, owner, repo);
 
@@ -2068,7 +1870,7 @@ IMPORTANT:
               {embeddingError ? (
                 messages.repoPage?.embeddingErrorDefault || 'This error is related to the document embedding system used for analyzing your repository. Please verify your embedding model configuration, API keys, and try again. If the issue persists, consider switching to a different embedding provider in the model settings.'
               ) : (
-                messages.repoPage?.errorMessageDefault || 'Please check that your repository exists and is public. Valid formats are "owner/repo", "https://github.com/owner/repo", "https://gitlab.com/owner/repo", "https://bitbucket.org/owner/repo", or local folder paths like "C:\\path\\to\\folder" or "/path/to/folder".'
+                messages.repoPage?.errorMessageDefault || 'Please check that your repository exists and is public. Valid formats are "owner/repo", "https://github.com/owner/repo", or local folder paths like "C:\\path\\to\\folder" or "/path/to/folder".'
               )}
             </p>
             <div className="mt-5">
@@ -2097,13 +1899,7 @@ IMPORTANT:
                   </div>
                 ) : (
                   <>
-                    {effectiveRepoInfo.type === 'github' ? (
-                      <FaGithub className="mr-2" />
-                    ) : effectiveRepoInfo.type === 'gitlab' ? (
-                      <FaGitlab className="mr-2" />
-                    ) : (
-                      <FaBitbucket className="mr-2" />
-                    )}
+                    <FaGithub className="mr-2" />
                     <a
                       href={effectiveRepoInfo.repoUrl ?? ''}
                       target="_blank"
@@ -2303,7 +2099,7 @@ IMPORTANT:
         onApply={confirmRefresh}
         showWikiType={true}
         showTokenInput={effectiveRepoInfo.type !== 'local' && !currentToken} // Show token input if not local and no current token
-        repositoryType={effectiveRepoInfo.type as 'github' | 'gitlab' | 'bitbucket'}
+        repositoryType={effectiveRepoInfo.type === 'github' ? 'github' : 'github'}
         authRequired={authRequired}
         authCode={authCode}
         setAuthCode={setAuthCode}

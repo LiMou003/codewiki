@@ -140,7 +140,7 @@ export default function Dashboard() {
   const [excludedFiles, setExcludedFiles] = useState('');
   const [includedDirs, setIncludedDirs] = useState('');
   const [includedFiles, setIncludedFiles] = useState('');
-  const [selectedPlatform, setSelectedPlatform] = useState<'github' | 'gitlab' | 'bitbucket'>('github');
+  const [selectedPlatform, setSelectedPlatform] = useState<'github'>('github');
   const [accessToken, setAccessToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -200,10 +200,6 @@ export default function Dashboard() {
       const domain = extractUrlDomain(input);
       if (domain?.includes('github.com')) {
         type = 'github';
-      } else if (domain?.includes('gitlab.com') || domain?.includes('gitlab.')) {
-        type = 'gitlab';
-      } else if (domain?.includes('bitbucket.org') || domain?.includes('bitbucket.')) {
-        type = 'bitbucket';
       } else {
         type = 'web';
       }
@@ -231,7 +227,7 @@ export default function Dashboard() {
     e.preventDefault();
     const parsedRepo = parseRepositoryInput(repositoryInput);
     if (!parsedRepo) {
-      setError('Invalid repository format. Please use a GitHub/GitLab/Bitbucket URL, owner/repo, or local path.');
+      setError('Invalid repository format. Please use a GitHub URL, owner/repo, or local path.');
       return;
     }
     setError(null);
