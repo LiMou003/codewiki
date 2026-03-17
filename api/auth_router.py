@@ -170,6 +170,10 @@ class TokenResponse(BaseModel):
 # ---------------------------------------------------------------------------
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# def get_adalflow_default_root_path():
+#     return os.path.expanduser(os.path.join("~", ".adalflow"))
+
+# WIKI_CACHE_DIR = os.path.join(get_adalflow_default_root_path(), "wikicache")
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
@@ -200,6 +204,12 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     token = _create_access_token(user.id)
+
+    # # 为新用户创建缓存目录
+    # safe_username = "".join(c for c in body.username if c.isalnum() or c in ("-", "_"))
+    # user_cache_dir = os.path.join(WIKI_CACHE_DIR, safe_username)
+    # os.makedirs(user_cache_dir, exist_ok=True)
+
     logger.info("New user registered: %s", user.username)
     return TokenResponse(
         access_token=token,

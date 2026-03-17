@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { FaTimes, FaTh, FaList } from 'react-icons/fa';
 import { useCurrentUsername } from '@/hooks/useCurrentUsername';
+import { useProcessedProjects } from '@/hooks/useProcessedProjects';
 
 // Interface should match the structure from the API
 interface ProcessedProject {
@@ -21,20 +22,31 @@ interface ProcessedProjectsProps {
   maxItems?: number;
   className?: string;
   messages?: Record<string, Record<string, string>>; // Translation messages with proper typing
+  projects?: ProcessedProject[];
+  isLoading?: boolean;
+  error?: string | null;
 }
 
 export default function ProcessedProjects({ 
   showHeader = true, 
   maxItems, 
   className = "",
-  messages 
+  messages,
+  projects: projectsFromProps,
+  isLoading: isLoadingFromProps,
+  error: errorFromProps,
 }: ProcessedProjectsProps) {
-  const [projects, setProjects] = useState<ProcessedProject[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [deletedProjectIds, setDeletedProjectIds] = useState<Set<string>>(new Set());
   const username = useCurrentUsername();
+  const useExternalData = projectsFromProps !== undefined || isLoadingFromProps !== undefined || errorFromProps !== undefined;
+  const { projects: fetchedProjects, isLoading: fetchedLoading, error: fetchedError } = useProcessedProjects(!useExternalData);
+
+  const sourceProjects = useExternalData ? (projectsFromProps ?? []) : fetchedProjects;
+  const projects = sourceProjects.filter((project) => !deletedProjectIds.has(project.id));
+  const isLoading = useExternalData ? Boolean(isLoadingFromProps) : fetchedLoading;
+  const error = useExternalData ? (errorFromProps ?? null) : fetchedError;
 
   // Default messages fallback
   const defaultMessages = {
@@ -54,36 +66,6 @@ export default function ProcessedProjects({
     }
     return defaultMessages[key as keyof typeof defaultMessages] || key;
   };
-
-  React.useEffect(() => {
-    const fetchProjects = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const url = username
-          ? `/api/wiki/projects?username=${encodeURIComponent(username)}`
-          : '/api/wiki/projects';
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch projects: ${response.statusText}`);
-        }
-        const data = await response.json();
-        if (data.error) {
-          throw new Error(data.error);
-        }
-        setProjects(data as ProcessedProject[]);
-      } catch (e: unknown) {
-        console.error("Failed to load projects from API:", e);
-        const message = e instanceof Error ? e.message : "An unknown error occurred.";
-        setError(message);
-        setProjects([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProjects();
-  }, [username]);
 
   // Filter projects based on search query
   const filteredProjects = useMemo(() => {
@@ -126,7 +108,7 @@ export default function ProcessedProjects({
         const errorBody = await response.json().catch(() => ({ error: response.statusText }));
         throw new Error(errorBody.error || response.statusText);
       }
-      setProjects(prev => prev.filter(p => p.id !== project.id));
+      setDeletedProjectIds((prev) => new Set(prev).add(project.id));
     } catch (e: unknown) {
       console.error('Failed to delete project:', e);
       alert(`删除项目失败：${e instanceof Error ? e.message : '未知错误'}`);

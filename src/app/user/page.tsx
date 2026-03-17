@@ -85,15 +85,15 @@ export default function UserPage() {
               <p className="text-sm text-[var(--muted)]">{user.email}</p>
             </div>
           </div>
-          <button
+          {/* <button
             onClick={handleSignOut}
             className="w-full sm:w-auto px-6 py-2 rounded-lg border border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 text-sm font-medium transition-colors"
           >
             退出登录
-          </button>
+          </button> */}
         </div>
 
-        {/* Recent Projects */}
+        {/* Recent Projects
         <div className="card-modern p-6 shadow-custom">
           <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">最近项目</h2>
           {recentProjects.length > 0 ? (
@@ -116,7 +116,7 @@ export default function UserPage() {
           ) : (
             <p className="text-sm text-[var(--muted)]">暂无最近项目。<Link href="/dashboard" className="text-[var(--accent-primary)] hover:underline">生成你的第一个 Wiki</Link>。</p>
           )}
-        </div>
+        </div> */}
 
         {/* Account Settings */}
         <div className="card-modern p-6 shadow-custom">

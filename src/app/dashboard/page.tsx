@@ -44,7 +44,7 @@ const DEMO_SEQUENCE_CHART = `sequenceDiagram
 export default function Dashboard() {
   const router = useRouter();
   const { language, setLanguage, messages, supportedLanguages } = useLanguage();
-  const { projects, isLoading: projectsLoading } = useProcessedProjects();
+  const { projects, isLoading: projectsLoading, error: projectsError } = useProcessedProjects();
   const { logout } = useAuth();
 
   // User state from localStorage
@@ -457,6 +457,9 @@ export default function Dashboard() {
                   showHeader={false}
                   maxItems={6}
                   messages={messages}
+                  projects={projects}
+                  isLoading={projectsLoading}
+                  error={projectsError}
                   className="w-full"
                 />
               </div>
@@ -526,7 +529,7 @@ export default function Dashboard() {
           </div>
         </main>
 
-        <footer className="mt-8">
+        {/* <footer className="mt-8">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-[var(--card-bg)] rounded-lg p-4 border border-[var(--border-color)] shadow-custom">
             <p className="text-[var(--muted)] text-sm">{t('footer.copyright')}</p>
             <div className="flex items-center gap-6">
@@ -544,7 +547,7 @@ export default function Dashboard() {
               <ThemeToggle />
             </div>
           </div>
-        </footer>
+        </footer> */}
       </div>
     </div>
   );

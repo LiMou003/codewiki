@@ -11,13 +11,18 @@ interface ProcessedProject {
   language: string;
 }
 
-export function useProcessedProjects() {
+export function useProcessedProjects(enabled: boolean = true) {
   const [projects, setProjects] = useState<ProcessedProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const username = useCurrentUsername();
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false);
+      return;
+    }
+
     const fetchProjects = async () => {
       setIsLoading(true);
       setError(null);
@@ -46,7 +51,7 @@ export function useProcessedProjects() {
     };
 
     fetchProjects();
-  }, [username]);
+  }, [username, enabled]);
 
   return { projects, isLoading, error };
 }
