@@ -114,7 +114,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error loading config from localStorage:', error);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Excludes stable setters (setSelectedLanguage, setProvider, setModel, setIsComprehensiveView, setIsCustomModel, setCustomModel, setSelectedPlatform, setAccessToken, setExcludedDirs, setExcludedFiles, setIncludedDirs, setIncludedFiles) to avoid exhaustive-deps noise; reruns when language changes
   }, [language]);
 
   const handleRepositoryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,6 +148,7 @@ export default function Dashboard() {
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const hasExistingProjects = !projectsLoading && projects.length > 0;
 
   useEffect(() => {
     setLanguage(selectedLanguage);
@@ -325,6 +326,17 @@ export default function Dashboard() {
             CodeWiki
           </Link>
           <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-3 text-[var(--muted)]">
+              <a href="https://github.com/AsyncFuncAI/deepwiki-open" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-primary)] transition-colors">
+                <FaGithub />
+              </a>
+              <a href="https://buymeacoffee.com/sheing" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-primary)] transition-colors">
+                <FaCoffee />
+              </a>
+              <a href="https://x.com/sashimikun_void" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-primary)] transition-colors">
+                <FaTwitter />
+              </a>
+            </div>
             <ThemeToggle />
             {user ? (
               <div className="relative">
@@ -357,102 +369,163 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <div className="flex-1 p-4 md:p-8 flex flex-col max-w-6xl mx-auto w-full">
-        <header className="mb-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[var(--card-bg)] rounded-lg shadow-custom border border-[var(--border-color)] p-4">
-            <div className="flex items-center">
-              <div className="bg-[var(--accent-primary)] p-2 rounded-lg mr-3">
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+      <div className="flex-1 p-4 md:p-8 flex flex-col gap-6 max-w-7xl mx-auto w-full">
+        <header className="relative overflow-hidden rounded-2xl border border-[var(--border-color)] bg-gradient-to-br from-[var(--accent-primary)]/10 via-[var(--background)] to-[var(--background)] shadow-custom">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute -top-16 -right-12 w-64 h-64 bg-[var(--accent-primary)]/10 rounded-full blur-3xl" />
+            <div className="absolute -bottom-10 -left-6 w-56 h-56 bg-[var(--accent-primary)]/15 rounded-full blur-3xl" />
+          </div>
+          <div className="relative grid lg:grid-cols-[1.15fr,1fr] gap-8 p-6 md:p-8 items-start">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] text-xs font-semibold border border-[var(--accent-primary)]/30">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2a10 10 0 00-3.162 19.478c.5.09.684-.216.684-.48 0-.236-.008-.864-.013-1.696-2.782.604-3.369-1.343-3.369-1.343-.454-1.153-1.109-1.46-1.109-1.46-.907-.62.069-.607.069-.607 1.003.07 1.532 1.031 1.532 1.031.892 1.53 2.341 1.088 2.91.833.091-.647.35-1.088.636-1.338-2.22-.252-4.555-1.112-4.555-4.944 0-1.091.39-1.985 1.029-2.684-.103-.253-.446-1.272.098-2.65 0 0 .84-.269 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.295 2.748-1.026 2.748-1.026.546 1.378.203 2.397.1 2.65.64.699 1.028 1.593 1.028 2.684 0 3.842-2.338 4.688-4.566 4.936.359.309.679.919.679 1.852 0 1.337-.012 2.417-.012 2.747 0 .266.18.574.688.476A10.002 10.002 0 0012 2z" />
                 </svg>
+                控制台 · Dashboard
               </div>
-              <div className="mr-6">
-                <h1 className="text-xl md:text-2xl font-bold text-[var(--accent-primary)]">控制台</h1>
-                <p className="text-xs text-[var(--muted)]">为任意仓库生成 Wiki</p>
+              <div className="space-y-2">
+                <h1 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] leading-tight">
+                  {t('home.welcome')}
+                </h1>
+                <p className="text-[var(--muted)] text-sm md:text-base max-w-3xl leading-relaxed">
+                  {t('home.description')}
+                </p>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {[
+                  { title: t('projects.existingProjects'), desc: t('projects.browseExisting'), tone: 'from-[var(--accent-primary)]/15 to-[var(--accent-primary)]/5' },
+                  { title: t('home.quickStart'), desc: t('home.enterRepoUrl'), tone: 'from-emerald-500/10 to-emerald-500/5' },
+                  { title: t('home.advancedVisualization'), desc: t('home.diagramDescription'), tone: 'from-indigo-500/10 to-indigo-500/5' },
+                ].map((item) => (
+                  <div key={item.title} className={`rounded-xl bg-gradient-to-br ${item.tone} border border-[var(--border-color)] shadow-custom p-3 text-sm text-[var(--foreground)]`}>
+                    <p className="font-semibold text-[var(--accent-primary)]">{item.title}</p>
+                    <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">{item.desc}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <form onSubmit={handleFormSubmit} className="flex flex-col gap-3 w-full max-w-3xl">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
+            <div className="bg-[var(--card-bg)]/90 backdrop-blur rounded-2xl border border-[var(--border-color)] shadow-custom p-6 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[var(--muted)] text-xs font-medium uppercase tracking-wide">Repository</p>
+                  <h2 className="text-xl font-semibold text-[var(--foreground)]">生成你的 Wiki</h2>
+                  <p className="text-[var(--muted)] text-xs mt-1">支持 GitHub / GitLab / BitBucket 或本地路径</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsConfigModalOpen(true)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
+                >
+                  高级配置
+                </button>
+              </div>
+              <form onSubmit={handleFormSubmit} className="space-y-3">
+                <label className="text-xs font-medium text-[var(--muted)]" htmlFor="repositoryInput">
+                  {t('form.repoPlaceholder') || 'owner/repo, GitHub/GitLab/BitBucket URL, or local folder path'}
+                </label>
+                <div className="relative">
                   <input
+                    id="repositoryInput"
                     type="text"
                     value={repositoryInput}
                     onChange={handleRepositoryInputChange}
-                    placeholder={t('form.repoPlaceholder') || 'owner/repo, GitHub/GitLab/BitBucket URL, or local folder path'}
-                    className="input-modern block w-full pl-10 pr-3 py-2.5 text-[var(--foreground)] bg-[var(--background)] focus:outline-none"
+                    placeholder={t('home.enterRepoUrl')}
+                    className="input-modern block w-full pl-3 pr-3 py-3 text-[var(--foreground)] bg-[var(--background)] border border-[var(--border-color)] rounded-xl focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[var(--accent-primary)]/30 transition"
                   />
-                  {error && (
-                    <div className="text-red-500 text-xs mt-1">{error}</div>
-                  )}
+                  {error && <div className="text-red-500 text-xs mt-1">{error}</div>}
                 </div>
-                <button
-                  type="submit"
-                  className="btn-primary px-6 py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? t('common.processing') : t('common.generateWiki')}
-                </button>
+                <div className="flex flex-wrap gap-3 items-center">
+                  <button
+                    type="submit"
+                    className="btn-primary px-6 py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? t('common.processing') : t('common.generateWiki')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfigModalOpen(true)}
+                    className="text-[var(--accent-primary)] text-sm font-medium hover:underline"
+                  >
+                    {t('form.configureWiki')}
+                  </button>
+                </div>
+              </form>
+              <div className="grid sm:grid-cols-2 gap-3 text-xs text-[var(--muted)]">
+                <div className="flex items-start gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5" />
+                  <div>
+                    <p className="font-semibold text-[var(--foreground)]">{t('home.quickStart')}</p>
+                    <p className="leading-relaxed">{t('home.enterRepoUrl')}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[var(--accent-primary)] mt-1.5" />
+                  <div>
+                    <p className="font-semibold text-[var(--foreground)]">{t('home.advancedVisualization')}</p>
+                    <p className="leading-relaxed">{t('home.diagramDescription')}</p>
+                  </div>
+                </div>
               </div>
-            </form>
 
-            <ConfigurationModal
-              isOpen={isConfigModalOpen}
-              onClose={() => setIsConfigModalOpen(false)}
-              repositoryInput={repositoryInput}
-              selectedLanguage={selectedLanguage}
-              setSelectedLanguage={setSelectedLanguage}
-              supportedLanguages={supportedLanguages}
-              isComprehensiveView={isComprehensiveView}
-              setIsComprehensiveView={setIsComprehensiveView}
-              provider={provider}
-              setProvider={setProvider}
-              model={model}
-              setModel={setModel}
-              isCustomModel={isCustomModel}
-              setIsCustomModel={setIsCustomModel}
-              customModel={customModel}
-              setCustomModel={setCustomModel}
-              selectedPlatform={selectedPlatform}
-              setSelectedPlatform={setSelectedPlatform}
-              accessToken={accessToken}
-              setAccessToken={setAccessToken}
-              excludedDirs={excludedDirs}
-              setExcludedDirs={setExcludedDirs}
-              excludedFiles={excludedFiles}
-              setExcludedFiles={setExcludedFiles}
-              includedDirs={includedDirs}
-              setIncludedDirs={setIncludedDirs}
-              includedFiles={includedFiles}
-              setIncludedFiles={setIncludedFiles}
-              onSubmit={handleGenerateWiki}
-              isSubmitting={isSubmitting}
-              authRequired={authRequired}
-              authCode={authCode}
-              setAuthCode={setAuthCode}
-              isAuthLoading={isAuthLoading}
-            />
+              <ConfigurationModal
+                isOpen={isConfigModalOpen}
+                onClose={() => setIsConfigModalOpen(false)}
+                repositoryInput={repositoryInput}
+                selectedLanguage={selectedLanguage}
+                setSelectedLanguage={setSelectedLanguage}
+                supportedLanguages={supportedLanguages}
+                isComprehensiveView={isComprehensiveView}
+                setIsComprehensiveView={setIsComprehensiveView}
+                provider={provider}
+                setProvider={setProvider}
+                model={model}
+                setModel={setModel}
+                isCustomModel={isCustomModel}
+                setIsCustomModel={setIsCustomModel}
+                customModel={customModel}
+                setCustomModel={setCustomModel}
+                selectedPlatform={selectedPlatform}
+                setSelectedPlatform={setSelectedPlatform}
+                accessToken={accessToken}
+                setAccessToken={setAccessToken}
+                excludedDirs={excludedDirs}
+                setExcludedDirs={setExcludedDirs}
+                excludedFiles={excludedFiles}
+                setExcludedFiles={setExcludedFiles}
+                includedDirs={includedDirs}
+                setIncludedDirs={setIncludedDirs}
+                includedFiles={includedFiles}
+                setIncludedFiles={setIncludedFiles}
+                onSubmit={handleGenerateWiki}
+                isSubmitting={isSubmitting}
+                authRequired={authRequired}
+                authCode={authCode}
+                setAuthCode={setAuthCode}
+                isAuthLoading={isAuthLoading}
+              />
+            </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
-          <div className="min-h-full flex flex-col items-center p-8 pt-10 bg-[var(--card-bg)] rounded-lg shadow-custom card-modern">
-            {!projectsLoading && projects.length > 0 ? (
-              <div className="w-full">
-                <div className="flex flex-col items-center w-full max-w-2xl mb-8 mx-auto">
-                  <div className="flex flex-col sm:flex-row items-center mb-6 gap-4">
-                    <div className="relative">
-                      <div className="absolute -inset-1 bg-[var(--accent-primary)]/20 rounded-full blur-md"></div>
-                      <svg className="w-12 h-12 text-[var(--accent-primary)] relative z-10" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-                      </svg>
-                    </div>
-                    <div className="text-center sm:text-left">
-                      <h2 className="text-2xl font-bold text-[var(--foreground)] mb-1">{t('projects.existingProjects')}</h2>
-                      <p className="text-[var(--accent-primary)] text-sm max-w-md">{t('projects.browseExisting')}</p>
-                    </div>
-                  </div>
+        <main className="grid lg:grid-cols-3 gap-6 items-start">
+          <section className="lg:col-span-2 space-y-4">
+            <div className="card-modern p-6 shadow-custom">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{hasExistingProjects ? t('projects.browseExisting') : t('home.welcomeTagline')}</p>
+                  <h2 className="text-xl md:text-2xl font-bold text-[var(--foreground)]">
+                    {hasExistingProjects ? t('projects.existingProjects') : t('home.welcome')}
+                  </h2>
                 </div>
+                <div className="flex items-center gap-2 text-[var(--muted)] text-xs">
+                  <span className="px-2 py-1 rounded-full bg-[var(--accent-secondary)] border border-[var(--border-color)]">GitHub</span>
+                  <span className="px-2 py-1 rounded-full bg-[var(--accent-secondary)] border border-[var(--border-color)]">GitLab</span>
+                  <span className="px-2 py-1 rounded-full bg-[var(--accent-secondary)] border border-[var(--border-color)]">BitBucket</span>
+                </div>
+              </div>
+              {hasExistingProjects ? (
                 <ProcessedProjects
                   showHeader={false}
                   maxItems={6}
@@ -462,92 +535,111 @@ export default function Dashboard() {
                   error={projectsError}
                   className="w-full"
                 />
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col items-center w-full max-w-2xl mb-8">
-                  <div className="flex flex-col sm:flex-row items-center mb-6 gap-4">
-                    <div className="relative">
-                      <div className="absolute -inset-1 bg-[var(--accent-primary)]/20 rounded-full blur-md"></div>
-                      <svg className="w-12 h-12 text-[var(--accent-primary)] relative z-10" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-                      </svg>
-                    </div>
-                    <div className="text-center sm:text-left">
-                      <h2 className="text-2xl font-bold text-[var(--foreground)] mb-1">{t('home.welcome')}</h2>
-                      <p className="text-[var(--accent-primary)] text-sm max-w-md">{t('home.welcomeTagline')}</p>
-                    </div>
-                  </div>
-                  <p className="text-[var(--foreground)] text-center mb-8 text-lg leading-relaxed">
-                    {t('home.description')}
-                  </p>
-                </div>
-
-                <div className="w-full max-w-2xl mb-10 bg-[var(--accent-primary)]/5 border border-[var(--accent-primary)]/20 rounded-lg p-5">
-                  <h3 className="text-sm font-semibold text-[var(--accent-primary)] mb-3 flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    {t('home.quickStart')}
-                  </h3>
-                  <p className="text-sm text-[var(--foreground)] mb-3">{t('home.enterRepoUrl')}</p>
-                  <div className="grid grid-cols-1 gap-3 text-xs text-[var(--muted)]">
-                    {[
-                      'https://github.com/AsyncFuncAI/deepwiki-open',
-                      'https://gitlab.com/gitlab-org/gitlab',
-                      'AsyncFuncAI/deepwiki-open',
-                      'https://bitbucket.org/atlassian/atlaskit',
-                    ].map((url) => (
-                      <div key={url} className="bg-[var(--background)]/70 p-3 rounded border border-[var(--border-color)] font-mono overflow-x-hidden whitespace-nowrap">
-                        {url}
+              ) : (
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[var(--accent-primary)]/15 flex items-center justify-center text-[var(--accent-primary)]">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <path d="M12 3l3 3-3 3-3-3 3-3zm0 12l3 3-3 3-3-3 3-3zm9-6l-3 3-3-3 3-3 3 3zM6 9l-3 3 3 3 3-3-3-3z" />
+                        </svg>
                       </div>
-                    ))}
+                      <div>
+                        <p className="text-sm text-[var(--muted)]">{t('home.welcomeTagline')}</p>
+                        <p className="text-lg font-semibold text-[var(--foreground)]">{t('home.quickStart')}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                      {t('home.description')}
+                    </p>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {[
+                        { title: '步骤 1', desc: t('home.enterRepoUrl') },
+                        { title: '步骤 2', desc: t('home.diagramDescription') },
+                        { title: '步骤 3', desc: t('projects.browseExisting') },
+                        { title: '步骤 4', desc: t('home.advancedVisualization') },
+                      ].map((item) => (
+                        <div key={item.title} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-3 text-sm">
+                          <p className="text-[var(--accent-primary)] font-semibold">{item.title}</p>
+                          <p className="text-[var(--muted)] mt-1 leading-relaxed">{item.desc}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-
-                <div className="w-full max-w-2xl mb-8 bg-[var(--background)]/70 rounded-lg p-6 border border-[var(--border-color)]">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[var(--accent-primary)] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                    <h3 className="text-base font-semibold text-[var(--foreground)]">{t('home.advancedVisualization')}</h3>
-                  </div>
-                  <p className="text-sm text-[var(--foreground)] mb-5 leading-relaxed">{t('home.diagramDescription')}</p>
-                  <div className="grid grid-cols-1 gap-6">
-                    <div className="bg-[var(--card-bg)] p-4 rounded-lg border border-[var(--border-color)] shadow-custom">
-                      <h4 className="text-sm font-medium text-[var(--foreground)] mb-3">{t('home.flowDiagram')}</h4>
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--foreground)]">{t('home.advancedVisualization')}</p>
+                        <p className="text-xs text-[var(--muted)]">{t('home.diagramDescription')}</p>
+                      </div>
+                    </div>
+                    <div className="bg-[var(--card-bg)] rounded-lg p-3 border border-[var(--border-color)]">
+                      <p className="text-xs font-semibold text-[var(--foreground)] mb-2">{t('home.flowDiagram')}</p>
                       <Mermaid chart={DEMO_FLOW_CHART} />
                     </div>
-                    <div className="bg-[var(--card-bg)] p-4 rounded-lg border border-[var(--border-color)] shadow-custom">
-                      <h4 className="text-sm font-medium text-[var(--foreground)] mb-3">{t('home.sequenceDiagram')}</h4>
-                      <Mermaid chart={DEMO_SEQUENCE_CHART} />
-                    </div>
                   </div>
                 </div>
-              </>
-            )}
-          </div>
-        </main>
-
-        {/* <footer className="mt-8">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-[var(--card-bg)] rounded-lg p-4 border border-[var(--border-color)] shadow-custom">
-            <p className="text-[var(--muted)] text-sm">{t('footer.copyright')}</p>
-            <div className="flex items-center gap-6">
-              <div className="flex items-center space-x-5">
-                <a href="https://github.com/AsyncFuncAI/deepwiki-open" target="_blank" rel="noopener noreferrer" className="text-[var(--muted)] hover:text-[var(--accent-primary)] transition-colors">
-                  <FaGithub className="text-xl" />
-                </a>
-                <a href="https://buymeacoffee.com/sheing" target="_blank" rel="noopener noreferrer" className="text-[var(--muted)] hover:text-[var(--accent-primary)] transition-colors">
-                  <FaCoffee className="text-xl" />
-                </a>
-                <a href="https://x.com/sashimikun_void" target="_blank" rel="noopener noreferrer" className="text-[var(--muted)] hover:text-[var(--accent-primary)] transition-colors">
-                  <FaTwitter className="text-xl" />
-                </a>
-              </div>
-              <ThemeToggle />
+              )}
             </div>
-          </div>
-        </footer> */}
+          </section>
+
+          <section className="space-y-4">
+            <div className="bg-[var(--card-bg)] rounded-2xl border border-[var(--border-color)] shadow-custom p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] flex items-center justify-center">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">{t('home.quickStart')}</p>
+                  <p className="text-xs text-[var(--muted)]">{t('home.enterRepoUrl')}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 text-xs text-[var(--muted)]">
+                {[
+                  'https://github.com/AsyncFuncAI/deepwiki-open',
+                  'https://gitlab.com/gitlab-org/gitlab',
+                  'AsyncFuncAI/deepwiki-open',
+                  'https://bitbucket.org/atlassian/atlaskit',
+                ].map((url) => (
+                  <div key={url} className="bg-[var(--background)]/80 p-3 rounded-lg border border-[var(--border-color)] font-mono overflow-x-hidden whitespace-nowrap">
+                    {url}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-[var(--card-bg)] rounded-2xl border border-[var(--border-color)] shadow-custom p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-indigo-500/15 text-indigo-500 flex items-center justify-center">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">{t('home.advancedVisualization')}</p>
+                  <p className="text-xs text-[var(--muted)]">{t('home.diagramDescription')}</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="bg-[var(--background)] rounded-lg p-3 border border-[var(--border-color)]">
+                  <p className="text-xs font-semibold text-[var(--foreground)] mb-2">{t('home.flowDiagram')}</p>
+                  <Mermaid chart={DEMO_FLOW_CHART} />
+                </div>
+                <div className="bg-[var(--background)] rounded-lg p-3 border border-[var(--border-color)]">
+                  <p className="text-xs font-semibold text-[var(--foreground)] mb-2">{t('home.sequenceDiagram')}</p>
+                  <Mermaid chart={DEMO_SEQUENCE_CHART} />
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
       </div>
     </div>
   );
