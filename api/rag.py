@@ -1,5 +1,4 @@
 import logging
-import weakref
 import re
 from dataclasses import dataclass, field as dataclass_field
 from typing import Any, List, Tuple, Dict
@@ -207,12 +206,12 @@ class RAG(adal.Component):
     """RAG with one repo.
     If you want to load a new repos, call prepare_retriever(repo_url_or_path) first."""
 
-    def __init__(self, provider="google", model=None, use_s3: bool = False):  # noqa: F841 - use_s3 is kept for compatibility
+    def __init__(self, provider="dashscope", model=None, use_s3: bool = False):  # noqa: F841 - use_s3 is kept for compatibility
         """
         Initialize the RAG component.
 
         Args:
-            provider: Model provider to use (google, openai, openrouter, ollama)
+            provider: Model provider to use (dashscope)
             model: Model name to use with the provider
             use_s3: Whether to use S3 for database storage (default: False)
         """
@@ -226,37 +225,12 @@ class RAG(adal.Component):
 
         # Determine embedder type based on current configuration
         self.embedder_type = get_embedder_type()
-        self.is_ollama_embedder = (self.embedder_type == 'ollama')  # Backward compatibility
-
-        # Check if Ollama model exists before proceeding
-        if self.is_ollama_embedder:
-            from api.ollama_patch import check_ollama_model_exists
-            from api.config import get_embedder_config
-            
-            embedder_config = get_embedder_config()
-            if embedder_config and embedder_config.get("model_kwargs", {}).get("model"):
-                model_name = embedder_config["model_kwargs"]["model"]
-                if not check_ollama_model_exists(model_name):
-                    raise Exception(f"Ollama model '{model_name}' not found. Please run 'ollama pull {model_name}' to install it.")
 
         # Initialize components
         self.memory = Memory()
         self.embedder = get_embedder(embedder_type=self.embedder_type)
 
-        self_weakref = weakref.ref(self)
-        # Patch: ensure query embedding is always single string for Ollama
-        def single_string_embedder(query):
-            # Accepts either a string or a list, always returns embedding for a single string
-            if isinstance(query, list):
-                if len(query) != 1:
-                    raise ValueError("Ollama embedder only supports a single string")
-                query = query[0]
-            instance = self_weakref()
-            assert instance is not None, "RAG instance is no longer available, but the query embedder was called."
-            return instance.embedder(input=query)
-
-        # Use single string embedder for Ollama, regular embedder for others
-        self.query_embedder = single_string_embedder if self.is_ollama_embedder else self.embedder
+        self.query_embedder = self.embedder
 
         self.initialize_db_manager()
 
@@ -459,9 +433,7 @@ IMPORTANT FORMATTING RULES:
                 )
 
             top_k = configs.get("retriever", {}).get("top_k", 20)
-            retrieve_embedder = (
-                self.query_embedder if self.is_ollama_embedder else self.embedder
-            )
+            retrieve_embedder = self.embedder
             result = _qdrant_search(qdrant_manager, retrieve_embedder, query, top_k)
             if result.documents:
                 logger.info("Qdrant retrieved %d chunks for query", len(result.documents))
