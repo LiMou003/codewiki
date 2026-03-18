@@ -224,7 +224,7 @@ class Conversation(Base):
         String(32),
         nullable=False,
         default="github",
-        comment="仓库类型：github / gitlab / local 等",
+        comment="仓库类型：github / local 等",
     )
     title = Column(
         String(512),

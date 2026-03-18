@@ -72,7 +72,7 @@ def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool 
 
 def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_token: str = None) -> str:
     """
-    Downloads a Git repository (GitHub, GitLab, or Bitbucket) to a specified local path.
+    Downloads a Git repository (GitHub or local) to a specified local path.
 
     Args:
         repo_type(str): Type of repository
@@ -108,18 +108,9 @@ def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_
             parsed = urlparse(repo_url)
             # URL-encode the token to handle special characters
             encoded_token = quote(access_token, safe='')
-            # Determine the repository type and format the URL accordingly
-            if repo_type == "github":
-                # Format: https://{token}@{domain}/owner/repo.git
-                # Works for both github.com and enterprise GitHub domains
-                clone_url = urlunparse((parsed.scheme, f"{encoded_token}@{parsed.netloc}", parsed.path, '', '', ''))
-            elif repo_type == "gitlab":
-                # Format: https://oauth2:{token}@gitlab.com/owner/repo.git
-                clone_url = urlunparse((parsed.scheme, f"oauth2:{encoded_token}@{parsed.netloc}", parsed.path, '', '', ''))
-            elif repo_type == "bitbucket":
-                # Format: https://x-token-auth:{token}@bitbucket.org/owner/repo.git
-                clone_url = urlunparse((parsed.scheme, f"x-token-auth:{encoded_token}@{parsed.netloc}", parsed.path, '', '', ''))
-
+            # Format: https://{token}@{domain}/owner/repo.git
+            # Works for both github.com and enterprise GitHub domains
+            clone_url = urlunparse((parsed.scheme, f"{encoded_token}@{parsed.netloc}", parsed.path, '', '', ''))
             logger.info("Using access token for authentication")
 
         # Clone the repository
@@ -636,167 +627,9 @@ def get_github_file_content(repo_url: str, file_path: str, access_token: str = N
     except Exception as e:
         raise ValueError(f"Failed to get file content: {str(e)}")
 
-def get_gitlab_file_content(repo_url: str, file_path: str, access_token: str = None) -> str:
-    """
-    Retrieves the content of a file from a GitLab repository (cloud or self-hosted).
-
-    Args:
-        repo_url (str): The GitLab repo URL (e.g., "https://gitlab.com/username/repo" or "http://localhost/group/project")
-        file_path (str): File path within the repository (e.g., "src/main.py")
-        access_token (str, optional): GitLab personal access token
-
-    Returns:
-        str: File content
-
-    Raises:
-        ValueError: If anything fails
-    """
-    try:
-        # Parse and validate the URL
-        parsed_url = urlparse(repo_url)
-        if not parsed_url.scheme or not parsed_url.netloc:
-            raise ValueError("Not a valid GitLab repository URL")
-
-        gitlab_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
-        if parsed_url.port not in (None, 80, 443):
-            gitlab_domain += f":{parsed_url.port}"
-        path_parts = parsed_url.path.strip("/").split("/")
-        if len(path_parts) < 2:
-            raise ValueError("Invalid GitLab URL format — expected something like https://gitlab.domain.com/group/project")
-
-        # Build project path and encode for API
-        project_path = "/".join(path_parts).replace(".git", "")
-        encoded_project_path = quote(project_path, safe='')
-
-        # Encode file path
-        encoded_file_path = quote(file_path, safe='')
-
-        # Try to get the default branch from the project info
-        default_branch = None
-        try:
-            project_info_url = f"{gitlab_domain}/api/v4/projects/{encoded_project_path}"
-            project_headers = {}
-            if access_token:
-                project_headers["PRIVATE-TOKEN"] = access_token
-            
-            project_response = requests.get(project_info_url, headers=project_headers)
-            if project_response.status_code == 200:
-                project_data = project_response.json()
-                default_branch = project_data.get('default_branch', 'main')
-                logger.info(f"Found default branch: {default_branch}")
-            else:
-                logger.warning(f"Could not fetch project info, using 'main' as default branch")
-                default_branch = 'main'
-        except Exception as e:
-            logger.warning(f"Error fetching project info: {e}, using 'main' as default branch")
-            default_branch = 'main'
-
-        api_url = f"{gitlab_domain}/api/v4/projects/{encoded_project_path}/repository/files/{encoded_file_path}/raw?ref={default_branch}"
-        # Fetch file content from GitLab API
-        headers = {}
-        if access_token:
-            headers["PRIVATE-TOKEN"] = access_token
-        logger.info(f"Fetching file content from GitLab API: {api_url}")
-        try:
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
-            content = response.text
-        except RequestException as e:
-            raise ValueError(f"Error fetching file content: {e}")
-
-        # Check for GitLab error response (JSON instead of raw file)
-        if content.startswith("{") and '"message":' in content:
-            try:
-                error_data = json.loads(content)
-                if "message" in error_data:
-                    raise ValueError(f"GitLab API error: {error_data['message']}")
-            except json.JSONDecodeError:
-                pass
-
-        return content
-
-    except Exception as e:
-        raise ValueError(f"Failed to get file content: {str(e)}")
-
-def get_bitbucket_file_content(repo_url: str, file_path: str, access_token: str = None) -> str:
-    """
-    Retrieves the content of a file from a Bitbucket repository using the Bitbucket API.
-
-    Args:
-        repo_url (str): The URL of the Bitbucket repository (e.g., "https://bitbucket.org/username/repo")
-        file_path (str): The path to the file within the repository (e.g., "src/main.py")
-        access_token (str, optional): Bitbucket personal access token for private repositories
-
-    Returns:
-        str: The content of the file as a string
-    """
-    try:
-        # Extract owner and repo name from Bitbucket URL
-        if not (repo_url.startswith("https://bitbucket.org/") or repo_url.startswith("http://bitbucket.org/")):
-            raise ValueError("Not a valid Bitbucket repository URL")
-
-        parts = repo_url.rstrip('/').split('/')
-        if len(parts) < 5:
-            raise ValueError("Invalid Bitbucket URL format")
-
-        owner = parts[-2]
-        repo = parts[-1].replace(".git", "")
-
-        # Try to get the default branch from the repository info
-        default_branch = None
-        try:
-            repo_info_url = f"https://api.bitbucket.org/2.0/repositories/{owner}/{repo}"
-            repo_headers = {}
-            if access_token:
-                repo_headers["Authorization"] = f"Bearer {access_token}"
-            
-            repo_response = requests.get(repo_info_url, headers=repo_headers)
-            if repo_response.status_code == 200:
-                repo_data = repo_response.json()
-                default_branch = repo_data.get('mainbranch', {}).get('name', 'main')
-                logger.info(f"Found default branch: {default_branch}")
-            else:
-                logger.warning(f"Could not fetch repository info, using 'main' as default branch")
-                default_branch = 'main'
-        except Exception as e:
-            logger.warning(f"Error fetching repository info: {e}, using 'main' as default branch")
-            default_branch = 'main'
-
-        # Use Bitbucket API to get file content
-        # The API endpoint for getting file content is: /2.0/repositories/{owner}/{repo}/src/{branch}/{path}
-        api_url = f"https://api.bitbucket.org/2.0/repositories/{owner}/{repo}/src/{default_branch}/{file_path}"
-
-        # Fetch file content from Bitbucket API
-        headers = {}
-        if access_token:
-            headers["Authorization"] = f"Bearer {access_token}"
-        logger.info(f"Fetching file content from Bitbucket API: {api_url}")
-        try:
-            response = requests.get(api_url, headers=headers)
-            if response.status_code == 200:
-                content = response.text
-            elif response.status_code == 404:
-                raise ValueError("File not found on Bitbucket. Please check the file path and repository.")
-            elif response.status_code == 401:
-                raise ValueError("Unauthorized access to Bitbucket. Please check your access token.")
-            elif response.status_code == 403:
-                raise ValueError("Forbidden access to Bitbucket. You might not have permission to access this file.")
-            elif response.status_code == 500:
-                raise ValueError("Internal server error on Bitbucket. Please try again later.")
-            else:
-                response.raise_for_status()
-                content = response.text
-            return content
-        except RequestException as e:
-            raise ValueError(f"Error fetching file content: {e}")
-
-    except Exception as e:
-        raise ValueError(f"Failed to get file content: {str(e)}")
-
-
 def get_file_content(repo_url: str, file_path: str, repo_type: str = None, access_token: str = None) -> str:
     """
-    Retrieves the content of a file from a Git repository (GitHub or GitLab).
+    Retrieves the content of a file from a Git repository (GitHub only).
 
     Args:
         repo_type (str): Type of repository
@@ -812,12 +645,8 @@ def get_file_content(repo_url: str, file_path: str, repo_type: str = None, acces
     """
     if repo_type == "github":
         return get_github_file_content(repo_url, file_path, access_token)
-    elif repo_type == "gitlab":
-        return get_gitlab_file_content(repo_url, file_path, access_token)
-    elif repo_type == "bitbucket":
-        return get_bitbucket_file_content(repo_url, file_path, access_token)
     else:
-        raise ValueError("Unsupported repository type. Only GitHub, GitLab, and Bitbucket are supported.")
+        raise ValueError("Unsupported repository type. Only GitHub is supported.")
 
 class DatabaseManager:
     """
@@ -879,10 +708,8 @@ class DatabaseManager:
         # Extract owner and repo name to create unique identifier
         url_parts = repo_url_or_path.rstrip('/').split('/')
 
-        if repo_type in ["github", "gitlab", "bitbucket"] and len(url_parts) >= 5:
-            # GitHub URL format: https://github.com/owner/repo
-            # GitLab URL format: https://gitlab.com/owner/repo or https://gitlab.com/group/subgroup/repo
-            # Bitbucket URL format: https://bitbucket.org/owner/repo
+        if repo_type != "local" and len(url_parts) >= 5:
+            # URL format: https://domain.com/owner/repo
             owner = url_parts[-2]
             repo = url_parts[-1].replace(".git", "")
             repo_name = f"{owner}_{repo}"

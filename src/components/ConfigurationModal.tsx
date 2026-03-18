@@ -32,8 +32,8 @@ interface ConfigurationModalProps {
   setCustomModel: (value: string) => void;
 
   // Platform selection
-  selectedPlatform: 'github' | 'gitlab' | 'bitbucket';
-  setSelectedPlatform: (value: 'github' | 'gitlab' | 'bitbucket') => void;
+  selectedPlatform: 'github';
+  setSelectedPlatform: (value: 'github') => void;
 
   // Access token
   accessToken: string;
