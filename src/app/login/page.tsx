@@ -36,12 +36,10 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 font-bold text-2xl text-[var(--accent-primary)]">
-            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-            </svg>
+            <img src="/favicon.ico" alt="CodeWiki logo" className="w-7 h-7" />
             CodeWiki
           </Link>
-          <p className="text-[var(--muted)] text-sm mt-2">登录你的账户</p>
+          <p className="text-[var(--muted)] text-sm mt-2">登录账户</p>
         </div>
 
         {/* Card */}
@@ -56,7 +54,7 @@ export default function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="your-username"
+                placeholder="用户名"
                 className="input-modern w-full text-[var(--foreground)] bg-[var(--background)]"
                 autoComplete="username"
               />
