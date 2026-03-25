@@ -7,62 +7,18 @@ from typing import List, Union, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-from api.openai_client import OpenAIClient
-from api.openrouter_client import OpenRouterClient
-from api.bedrock_client import BedrockClient
-from api.google_embedder_client import GoogleEmbedderClient
-from api.azureai_client import AzureAIClient
 from api.dashscope_client import DashscopeClient
-from adalflow import GoogleGenAIClient, OllamaClient
-
-# Get API keys from environment variables
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
-OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
-AWS_SESSION_TOKEN = os.environ.get('AWS_SESSION_TOKEN')
-AWS_REGION = os.environ.get('AWS_REGION')
-AWS_ROLE_ARN = os.environ.get('AWS_ROLE_ARN')
-
-# Set keys in environment (in case they're needed elsewhere in the code)
-if OPENAI_API_KEY:
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-if GOOGLE_API_KEY:
-    os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
-if OPENROUTER_API_KEY:
-    os.environ["OPENROUTER_API_KEY"] = OPENROUTER_API_KEY
-if AWS_ACCESS_KEY_ID:
-    os.environ["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
-if AWS_SECRET_ACCESS_KEY:
-    os.environ["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
-if AWS_SESSION_TOKEN:
-    os.environ["AWS_SESSION_TOKEN"] = AWS_SESSION_TOKEN
-if AWS_REGION:
-    os.environ["AWS_REGION"] = AWS_REGION
-if AWS_ROLE_ARN:
-    os.environ["AWS_ROLE_ARN"] = AWS_ROLE_ARN
 
 # Wiki authentication settings
 raw_auth_mode = os.environ.get('DEEPWIKI_AUTH_MODE', 'False')
 WIKI_AUTH_MODE = raw_auth_mode.lower() in ['true', '1', 't']
 WIKI_AUTH_CODE = os.environ.get('DEEPWIKI_AUTH_CODE', '')
 
-# Embedder settings
-EMBEDDER_TYPE = os.environ.get('DEEPWIKI_EMBEDDER_TYPE', 'dashscope').lower()
-
 # Get configuration directory from environment variable, or use default if not set
 CONFIG_DIR = os.environ.get('DEEPWIKI_CONFIG_DIR', None)
 
 # Client class mapping
 CLIENT_CLASSES = {
-    "GoogleGenAIClient": GoogleGenAIClient,
-    "GoogleEmbedderClient": GoogleEmbedderClient,
-    "OpenAIClient": OpenAIClient,
-    "OpenRouterClient": OpenRouterClient,
-    "OllamaClient": OllamaClient,
-    "BedrockClient": BedrockClient,
-    "AzureAIClient": AzureAIClient,
     "DashscopeClient": DashscopeClient
 }
 
@@ -131,17 +87,8 @@ def load_generator_config():
             if provider_config.get("client_class") in CLIENT_CLASSES:
                 provider_config["model_client"] = CLIENT_CLASSES[provider_config["client_class"]]
             # Fall back to default mapping based on provider_id
-            elif provider_id in ["google", "openai", "openrouter", "ollama", "bedrock", "azure", "dashscope"]:
-                default_map = {
-                    "google": GoogleGenAIClient,
-                    "openai": OpenAIClient,
-                    "openrouter": OpenRouterClient,
-                    "ollama": OllamaClient,
-                    "bedrock": BedrockClient,
-                    "azure": AzureAIClient,
-                    "dashscope": DashscopeClient
-                }
-                provider_config["model_client"] = default_map[provider_id]
+            elif provider_id == "dashscope":
+                provider_config["model_client"] = DashscopeClient
             else:
                 logger.warning(f"Unknown provider or client class: {provider_id}")
 
@@ -152,7 +99,7 @@ def load_embedder_config():
     embedder_config = load_json_config("embedder.json")
 
     # Process client classes
-    for key in ["embedder", "embedder_ollama", "embedder_google", "embedder_bedrock", "embedder_dashscope"]:
+    for key in ["embedder", "embedder_dashscope"]:
         if key in embedder_config and "client_class" in embedder_config[key]:
             class_name = embedder_config[key]["client_class"]
             if class_name in CLIENT_CLASSES:
@@ -162,80 +109,14 @@ def load_embedder_config():
 
 def get_embedder_config():
     """
-    Get the current embedder configuration based on DEEPWIKI_EMBEDDER_TYPE.
+    Get the current embedder configuration.
 
     Returns:
         dict: The embedder configuration with model_client resolved
     """
-    embedder_type = EMBEDDER_TYPE
-    if embedder_type == 'bedrock' and 'embedder_bedrock' in configs:
-        return configs.get("embedder_bedrock", {})
-    elif embedder_type == 'google' and 'embedder_google' in configs:
-        return configs.get("embedder_google", {})
-    elif embedder_type == 'ollama' and 'embedder_ollama' in configs:
-        return configs.get("embedder_ollama", {})
-    elif embedder_type == 'dashscope' and 'embedder_dashscope' in configs:
+    if 'embedder_dashscope' in configs:
         return configs.get("embedder_dashscope", {})
-    else:
-        return configs.get("embedder", {})
-
-def is_ollama_embedder():
-    """
-    Check if the current embedder configuration uses OllamaClient.
-
-    Returns:
-        bool: True if using OllamaClient, False otherwise
-    """
-    embedder_config = get_embedder_config()
-    if not embedder_config:
-        return False
-
-    # Check if model_client is OllamaClient
-    model_client = embedder_config.get("model_client")
-    if model_client:
-        return model_client.__name__ == "OllamaClient"
-
-    # Fallback: check client_class string
-    client_class = embedder_config.get("client_class", "")
-    return client_class == "OllamaClient"
-
-def is_google_embedder():
-    """
-    Check if the current embedder configuration uses GoogleEmbedderClient.
-
-    Returns:
-        bool: True if using GoogleEmbedderClient, False otherwise
-    """
-    embedder_config = get_embedder_config()
-    if not embedder_config:
-        return False
-
-    # Check if model_client is GoogleEmbedderClient
-    model_client = embedder_config.get("model_client")
-    if model_client:
-        return model_client.__name__ == "GoogleEmbedderClient"
-
-    # Fallback: check client_class string
-    client_class = embedder_config.get("client_class", "")
-    return client_class == "GoogleEmbedderClient"
-
-def is_bedrock_embedder():
-    """
-    Check if the current embedder configuration uses BedrockClient.
-
-    Returns:
-        bool: True if using BedrockClient, False otherwise
-    """
-    embedder_config = get_embedder_config()
-    if not embedder_config:
-        return False
-
-    model_client = embedder_config.get("model_client")
-    if model_client:
-        return model_client.__name__ == "BedrockClient"
-
-    client_class = embedder_config.get("client_class", "")
-    return client_class == "BedrockClient"
+    return configs.get("embedder", {})
 
 def is_dashscope_embedder():
     """
@@ -260,18 +141,9 @@ def get_embedder_type():
     Get the current embedder type based on configuration.
     
     Returns:
-        str: 'bedrock', 'ollama', 'google', 'dashscope', or 'openai' (default)
+        str: 'dashscope'
     """
-    if is_bedrock_embedder():
-        return 'bedrock'
-    elif is_ollama_embedder():
-        return 'ollama'
-    elif is_google_embedder():
-        return 'google'
-    elif is_dashscope_embedder():
-        return 'dashscope'
-    else:
-        return 'openai'
+    return 'dashscope'
 
 # Load repository and file filters configuration
 def load_repo_config():
@@ -358,12 +230,12 @@ lang_config = load_lang_config()
 
 # Update configuration
 if generator_config:
-    configs["default_provider"] = generator_config.get("default_provider", "google")
+    configs["default_provider"] = generator_config.get("default_provider", "dashscope")
     configs["providers"] = generator_config.get("providers", {})
 
 # Update embedder configuration
 if embedder_config:
-    for key in ["embedder", "embedder_ollama", "embedder_google", "embedder_bedrock", "embedder_dashscope", "retriever", "text_splitter"]:
+    for key in ["embedder", "embedder_dashscope", "retriever", "text_splitter"]:
         if key in embedder_config:
             configs[key] = embedder_config[key]
 
@@ -378,12 +250,12 @@ if lang_config:
     configs["lang_config"] = lang_config
 
 
-def get_model_config(provider="google", model=None):
+def get_model_config(provider="dashscope", model=None):
     """
     Get configuration for the specified provider and model
 
     Parameters:
-        provider (str): Model provider ('google', 'openai', 'openrouter', 'ollama', 'bedrock')
+        provider (str): Model provider ('dashscope')
         model (str): Model name, or None to use default model
 
     Returns:
@@ -420,15 +292,6 @@ def get_model_config(provider="google", model=None):
         "model_client": model_client,
     }
 
-    # Provider-specific adjustments
-    if provider == "ollama":
-        # Ollama uses a slightly different parameter structure
-        if "options" in model_params:
-            result["model_kwargs"] = {"model": model, **model_params["options"]}
-        else:
-            result["model_kwargs"] = {"model": model}
-    else:
-        # Standard structure for other providers
-        result["model_kwargs"] = {"model": model, **model_params}
+    result["model_kwargs"] = {"model": model, **model_params}
 
     return result
