@@ -190,6 +190,38 @@ class QdrantManager:
             "Upserted %d points into '%s'", len(points), self.collection_name
         )
 
+    def delete_points_by_file_paths(self, file_paths: List[str]) -> int:
+        """Delete all points whose ``file_path`` payload field matches any in *file_paths*.
+
+        Returns the number of delete operations performed (one per unique file_path).
+        """
+        if not file_paths:
+            return 0
+
+        from qdrant_client.models import Filter, FieldCondition, MatchAny
+
+        deleted = 0
+        for fpath in file_paths:
+            try:
+                qdrant_filter = Filter(
+                    must=[FieldCondition(key="file_path", match=MatchAny(any=[fpath]))]
+                )
+                result = self._client.delete(
+                    collection_name=self.collection_name,
+                    points_selector=qdrant_filter,
+                )
+                if result.status == "completed":
+                    logger.debug(
+                        "Deleted points for file_path='%s' from '%s'",
+                        fpath, self.collection_name,
+                    )
+                    deleted += 1
+            except Exception as exc:
+                logger.warning(
+                    "Failed to delete points for file_path='%s': %s", fpath, exc,
+                )
+        return deleted
+
     # ------------------------------------------------------------------
     # Read operations
     # ------------------------------------------------------------------
@@ -369,6 +401,106 @@ class QdrantManager:
                 exc,
             )
             return 0
+
+    @classmethod
+    def get_collection_dimension(
+        cls,
+        repo_name: str,
+        qdrant_url: Optional[str] = None,
+        qdrant_api_key: Optional[str] = None,
+    ) -> Optional[int]:
+        """Return the vector dimension of the Qdrant collection for *repo_name*.
+
+        Returns None if the collection does not exist, Qdrant is unreachable,
+        or the instance is in-memory.
+        """
+        url = qdrant_url or os.environ.get("QDRANT_URL")
+        if not url:
+            return None
+
+        api_key = qdrant_api_key or os.environ.get("QDRANT_API_KEY")
+        collection_name = _collection_name(repo_name)
+
+        try:
+            from qdrant_client import QdrantClient
+
+            client = QdrantClient(url=url, api_key=api_key or None)
+            existing = {c.name for c in client.get_collections().collections}
+            if collection_name not in existing:
+                return None
+
+            info = client.get_collection(collection_name)
+            if info.config and info.config.params and info.config.params.vectors:
+                dim = info.config.params.vectors.size
+                logger.debug(
+                    "Qdrant collection '%s' dimension: %d",
+                    collection_name, dim,
+                )
+                return dim
+            return None
+        except Exception as exc:
+            logger.warning(
+                "Could not query Qdrant dimension for '%s': %s",
+                collection_name, exc,
+            )
+            return None
+
+    def get_dimension(self) -> Optional[int]:
+        """Return this instance's collection vector dimension from Qdrant."""
+        try:
+            info = self._client.get_collection(self.collection_name)
+            if info.config and info.config.params and info.config.params.vectors:
+                return info.config.params.vectors.size
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def delete_collection_for_repo(
+        cls,
+        repo_name: str,
+        qdrant_url: Optional[str] = None,
+        qdrant_api_key: Optional[str] = None,
+    ) -> bool:
+        """Delete the Qdrant collection for *repo_name* if it exists.
+
+        Returns True if the collection was deleted (or didn't exist),
+        False on error.
+        """
+        url = qdrant_url or os.environ.get("QDRANT_URL")
+        if not url:
+            logger.debug(
+                "No QDRANT_URL set; nothing to delete for repo '%s'.",
+                repo_name,
+            )
+            return True
+
+        api_key = qdrant_api_key or os.environ.get("QDRANT_API_KEY")
+        collection_name = _collection_name(repo_name)
+
+        try:
+            from qdrant_client import QdrantClient
+
+            client = QdrantClient(url=url, api_key=api_key or None)
+            existing = {c.name for c in client.get_collections().collections}
+            if collection_name in existing:
+                client.delete_collection(collection_name)
+                logger.info(
+                    "Deleted Qdrant collection '%s' for repo '%s'",
+                    collection_name, repo_name,
+                )
+            else:
+                logger.info(
+                    "Qdrant collection '%s' does not exist; nothing to delete.",
+                    collection_name,
+                )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Could not delete Qdrant collection '%s': %s",
+                collection_name, exc,
+            )
+            return False
 
     # ------------------------------------------------------------------
     # Convenience: build from CodeChunk list

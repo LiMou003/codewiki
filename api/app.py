@@ -7,7 +7,6 @@ from typing import List, Optional, Dict, Any, Literal
 import json
 from datetime import datetime
 from pydantic import BaseModel, Field
-import google.generativeai as genai
 import asyncio
 
 # Configure logging
@@ -19,14 +18,26 @@ logger = logging.getLogger(__name__)
 
 from contextlib import asynccontextmanager
 
-# Register authentication router
-from api.auth_router import router as auth_router, init_db as _auth_init_db
+from api.auth_router import router as auth_router
+from api.conversation_router import router as conversation_router
+from api.settings_router import router as settings_router
+from api.database import init_db
 
 
 @asynccontextmanager
 async def _lifespan(application):  # noqa: ARG001
-    await _auth_init_db()
+    await init_db()
+    try:
+        from api.incremental_index import start_auto_refresh
+        start_auto_refresh()
+    except Exception as exc:
+        logger.warning("Could not start incremental index auto-refresh: %s", exc)
     yield
+    try:
+        from api.incremental_index import stop_auto_refresh
+        stop_auto_refresh()
+    except Exception:
+        pass
 
 
 # Initialize FastAPI app
@@ -46,6 +57,8 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(conversation_router)
+app.include_router(settings_router)
 
 # Helper function to get adalflow root path
 def get_adalflow_default_root_path():
@@ -196,7 +209,7 @@ async def get_model_config():
 
         # Create providers from the config file
         providers = []
-        default_provider = configs.get("default_provider", "google")
+        default_provider = configs.get("default_provider", "dashscope")
 
         # Add provider configuration based on config.py
         for provider_id, provider_config in configs["providers"].items():
@@ -229,15 +242,15 @@ async def get_model_config():
         return ModelConfig(
             providers=[
                 Provider(
-                    id="google",
-                    name="Google",
+                    id="dashscope",
+                    name="DashScope",
                     supportsCustomModel=True,
                     models=[
-                        Model(id="gemini-2.5-flash", name="Gemini 2.5 Flash")
+                        Model(id="qwen-plus", name="Qwen Plus")
                     ]
                 )
             ],
-            defaultProvider="google"
+            defaultProvider="dashscope"
         )
 
 @app.post("/export/wiki")
@@ -408,13 +421,14 @@ def generate_json_export(repo_url: str, pages: List[WikiPage]) -> str:
 
 # Import the simplified chat implementation
 from api.simple_chat import chat_completions_stream
-from api.websocket_wiki import handle_websocket_chat
+from api.websocket_wiki import handle_websocket_chat, handle_websocket_chat_deep_research
 
 # Add the chat_completions_stream endpoint to the main app
 app.add_api_route("/chat/completions/stream", chat_completions_stream, methods=["POST"])
 
-# Add the WebSocket endpoint
+# Add the WebSocket endpoints
 app.add_websocket_route("/ws/chat", handle_websocket_chat)
+app.add_websocket_route("/ws/chat/deep-research", handle_websocket_chat_deep_research)
 
 # --- Wiki Cache Helper Functions ---
 
@@ -564,13 +578,43 @@ async def delete_wiki_cache(
         try:
             os.remove(cache_path)
             logger.info(f"Successfully deleted wiki cache: {cache_path}")
-            return {"message": f"Wiki cache for {owner}/{repo} ({language}) deleted successfully"}
         except Exception as e:
             logger.error(f"Error deleting wiki cache {cache_path}: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to delete wiki cache: {str(e)}")
     else:
         logger.warning(f"Wiki cache not found, cannot delete: {cache_path}")
         raise HTTPException(status_code=404, detail="Wiki cache not found")
+
+    # Also delete the Qdrant vector collection so that re-indexing
+    # starts from a clean state.
+    repo_name = f"{owner}_{repo}" if repo_type != "local" else repo
+    try:
+        from api.qdrant_manager import QdrantManager
+        QdrantManager.delete_collection_for_repo(repo_name)
+        logger.info("Qdrant collection for '%s' (%s/%s) deleted.", repo_name, owner, repo)
+    except Exception as exc:
+        logger.warning("Failed to delete Qdrant collection for '%s': %s", repo_name, exc)
+
+    return {"message": f"Wiki cache for {owner}/{repo} ({language}) deleted successfully"}
+
+
+@app.post("/api/repos/refresh")
+async def refresh_repos():
+    """Manually trigger incremental index refresh for all discovered repos."""
+    try:
+        from api.incremental_index import refresh_all_repos
+        results = await refresh_all_repos()
+        updated = [k for k, v in results.items() if v]
+        return {
+            "checked": len(results),
+            "updated": len(updated),
+            "updated_repos": updated,
+            "details": results,
+        }
+    except Exception as exc:
+        logger.error("Manual refresh failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 @app.get("/health")
 async def health_check():

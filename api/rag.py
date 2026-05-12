@@ -1,8 +1,7 @@
 import logging
-import weakref
 import re
 from dataclasses import dataclass, field as dataclass_field
-from typing import Any, List, Tuple, Dict
+from typing import Any, List, Optional, Tuple, Dict
 from uuid import uuid4
 
 import adalflow as adal
@@ -75,6 +74,11 @@ def _qdrant_search(qdrant_manager, embedder, query: str, top_k: int) -> Retrieve
         return RetrieverOutput(doc_indices=[], doc_scores=[], documents=[])
 
     hits = qdrant_manager.search(query_vector=query_vec, top_k=top_k)
+
+    logger.info(
+        "Qdrant search returned %d hits (top_k=%d)",
+        len(hits), top_k,
+    )
 
     docs = []
     scores = []
@@ -207,56 +211,19 @@ class RAG(adal.Component):
     """RAG with one repo.
     If you want to load a new repos, call prepare_retriever(repo_url_or_path) first."""
 
-    def __init__(self, provider="google", model=None, use_s3: bool = False):  # noqa: F841 - use_s3 is kept for compatibility
-        """
-        Initialize the RAG component.
-
-        Args:
-            provider: Model provider to use (google, openai, openrouter, ollama)
-            model: Model name to use with the provider
-            use_s3: Whether to use S3 for database storage (default: False)
-        """
+    def __init__(self, provider="dashscope", model=None, use_s3: bool = False):
         super().__init__()
 
         self.provider = provider
         self.model = model
 
-        # Import the helper functions
         from api.config import get_embedder_config, get_embedder_type
 
-        # Determine embedder type based on current configuration
         self.embedder_type = get_embedder_type()
-        self.is_ollama_embedder = (self.embedder_type == 'ollama')  # Backward compatibility
 
-        # Check if Ollama model exists before proceeding
-        if self.is_ollama_embedder:
-            from api.ollama_patch import check_ollama_model_exists
-            from api.config import get_embedder_config
-            
-            embedder_config = get_embedder_config()
-            if embedder_config and embedder_config.get("model_kwargs", {}).get("model"):
-                model_name = embedder_config["model_kwargs"]["model"]
-                if not check_ollama_model_exists(model_name):
-                    raise Exception(f"Ollama model '{model_name}' not found. Please run 'ollama pull {model_name}' to install it.")
-
-        # Initialize components
         self.memory = Memory()
         self.embedder = get_embedder(embedder_type=self.embedder_type)
-
-        self_weakref = weakref.ref(self)
-        # Patch: ensure query embedding is always single string for Ollama
-        def single_string_embedder(query):
-            # Accepts either a string or a list, always returns embedding for a single string
-            if isinstance(query, list):
-                if len(query) != 1:
-                    raise ValueError("Ollama embedder only supports a single string")
-                query = query[0]
-            instance = self_weakref()
-            assert instance is not None, "RAG instance is no longer available, but the query embedder was called."
-            return instance.embedder(input=query)
-
-        # Use single string embedder for Ollama, regular embedder for others
-        self.query_embedder = single_string_embedder if self.is_ollama_embedder else self.embedder
+        self.query_embedder = self.embedder
 
         self.initialize_db_manager()
 
@@ -396,7 +363,8 @@ IMPORTANT FORMATTING RULES:
 
     def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None,
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None,
-                      included_dirs: List[str] = None, included_files: List[str] = None):
+                      included_dirs: List[str] = None, included_files: List[str] = None,
+                      dimension: int = None):
         """
         Prepare the Qdrant retriever for a repository.
 
@@ -423,6 +391,7 @@ IMPORTANT FORMATTING RULES:
             excluded_files=excluded_files,
             included_dirs=included_dirs,
             included_files=included_files,
+            dimension=dimension,
         )
 
         self._qdrant_manager = getattr(self.db_manager, "qdrant_manager", None)
@@ -432,13 +401,33 @@ IMPORTANT FORMATTING RULES:
                 "Ensure Qdrant is running and the repository was indexed successfully."
             )
 
+        # Sync embedder dimension to match the actual Qdrant collection
+        collection_dim = self._qdrant_manager.get_dimension()
+        if collection_dim is not None:
+            current_dim = (
+                getattr(self.embedder, "model_kwargs", {}) or {}
+            ).get("dimension")
+            if current_dim != collection_dim:
+                logger.info(
+                    "Recreating embedder to match Qdrant collection dimension %d "
+                    "(was %s)", collection_dim, current_dim,
+                )
+                self.embedder = get_embedder(
+                    embedder_type=self.embedder_type,
+                    dimension=collection_dim,
+                )
+                self.query_embedder = self.embedder
+            else:
+                logger.info("Embedder dimension %d matches Qdrant collection", collection_dim)
+
         logger.info(
-            "Qdrant retriever ready: %d chunks available for '%s'.",
+            "Qdrant retriever ready: %d chunks, dim=%s, repo='%s'.",
             self._qdrant_manager.count(),
+            collection_dim,
             repo_url_or_path,
         )
 
-    def call(self, query: str, language: str = "en") -> Tuple[List]:
+    def call(self, query: str, language: str = "en", top_k: Optional[int] = None) -> Tuple[List]:
         """
         Process a query using RAG.
 
@@ -458,11 +447,10 @@ IMPORTANT FORMATTING RULES:
                     "Qdrant retriever is not initialized. Call prepare_retriever() first."
                 )
 
-            top_k = configs.get("retriever", {}).get("top_k", 20)
-            retrieve_embedder = (
-                self.query_embedder if self.is_ollama_embedder else self.embedder
-            )
-            result = _qdrant_search(qdrant_manager, retrieve_embedder, query, top_k)
+            tk = top_k if top_k is not None else configs.get("retriever", {}).get("top_k", 20)
+            retrieve_embedder = self.embedder
+            logger.info("RAG call with top_k=%d, query_length=%d", tk, len(query))
+            result = _qdrant_search(qdrant_manager, retrieve_embedder, query, tk)
             if result.documents:
                 logger.info("Qdrant retrieved %d chunks for query", len(result.documents))
             return [result]

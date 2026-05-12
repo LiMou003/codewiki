@@ -1,13 +1,21 @@
 'use client';
 
-import React, {useState, useRef, useEffect} from 'react';
-import {FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { FaPlus, FaTrash, FaComments, FaRobot, FaUser, FaChevronLeft, FaChevronRight, FaPaperPlane, FaTimes, FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
 import Markdown from './Markdown';
 import { useLanguage } from '@/contexts/LanguageContext';
 import RepoInfo from '@/types/repoinfo';
 import getRepoUrl from '@/utils/getRepoUrl';
 import ModelSelectionModal from './ModelSelectionModal';
-import { createChatWebSocket, closeWebSocket, ChatCompletionRequest } from '@/utils/websocketClient';
+import { createChatWebSocket, closeWebSocket, createDeepResearchWebSocket, ChatCompletionRequest } from '@/utils/websocketClient';
+import {
+  Conversation,
+  ConversationMessage,
+  CreateConversationRequest,
+  FeedbackStatus,
+} from '@/types/database';
+import * as conversationApi from '@/services/conversationApi';
+import { getUserSettings } from '@/services/userSettingsApi';
 
 interface Model {
   id: string;
@@ -21,16 +29,22 @@ interface Provider {
   supportsCustomModel?: boolean;
 }
 
-interface Message {
-  role: 'user' | 'assistant' | 'system';
+interface ChatPage {
+  type: 'plan' | 'update' | 'conclusion';
+  title: string;
   content: string;
 }
 
-interface ResearchStage {
-  title: string;
+interface ChatMessageItem {
+  id: string;
+  role: 'user' | 'assistant';
   content: string;
-  iteration: number;
-  type: 'plan' | 'update' | 'conclusion';
+  createdAt: string;
+  isStreaming?: boolean;
+  feedbackStatus?: FeedbackStatus;
+  hasDeepResearch?: boolean;
+  pages?: ChatPage[];
+  currentPage?: number;
 }
 
 interface AskProps {
@@ -50,14 +64,12 @@ const Ask: React.FC<AskProps> = ({
   isCustomModel = false,
   customModel = '',
   language = 'en',
-  onRef
+  onRef,
 }) => {
   const [question, setQuestion] = useState('');
-  const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
 
-  // Model selection state
   const [selectedProvider, setSelectedProvider] = useState(provider);
   const [selectedModel, setSelectedModel] = useState(model);
   const [isCustomSelectedModel, setIsCustomSelectedModel] = useState(isCustomModel);
@@ -65,46 +77,69 @@ const Ask: React.FC<AskProps> = ({
   const [isModelSelectionModalOpen, setIsModelSelectionModalOpen] = useState(false);
   const [isComprehensiveView, setIsComprehensiveView] = useState(true);
 
-  // Get language context for translations
   const { messages } = useLanguage();
 
-  // Research navigation state
-  const [researchStages, setResearchStages] = useState<ResearchStage[]>([]);
-  const [currentStageIndex, setCurrentStageIndex] = useState(0);
-  const [conversationHistory, setConversationHistory] = useState<Message[]>([]);
-  const [researchIteration, setResearchIteration] = useState(0);
-  const [researchComplete, setResearchComplete] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackTargetMsgId, setFeedbackTargetMsgId] = useState<string | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
-  const responseRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const providerRef = useRef(provider);
   const modelRef = useRef(model);
+  const webSocketRef = useRef<WebSocket | null>(null);
+  const skipScrollRef = useRef(false);
+  const userTopKRef = useRef<number | undefined>(undefined);
+  const userDimensionRef = useRef<number | undefined>(undefined);
 
-  // Focus input on component mount
-  useEffect(() => {
+  const clearConversation = useCallback(() => {
+    setQuestion('');
+    setChatMessages([]);
+    setCurrentConversationId(null);
     if (inputRef.current) {
       inputRef.current.focus();
     }
   }, []);
 
-  // Expose clearConversation method to parent component
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [currentConversationId]);
+
   useEffect(() => {
     if (onRef) {
       onRef({ clearConversation });
     }
-  }, [onRef]);
+  }, [onRef, clearConversation]);
 
-  // Scroll to bottom of response when it changes
   useEffect(() => {
-    if (responseRef.current) {
-      responseRef.current.scrollTop = responseRef.current.scrollHeight;
+    if (skipScrollRef.current) {
+      skipScrollRef.current = false;
+      return;
     }
-  }, [response]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
-  // Close WebSocket when component unmounts
   useEffect(() => {
     return () => {
       closeWebSocket(webSocketRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    getUserSettings()
+      .then(s => {
+        userTopKRef.current = s.config?.retrieval?.top_k;
+        userDimensionRef.current = s.config?.embedding?.dimension;
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -116,20 +151,14 @@ const Ask: React.FC<AskProps> = ({
     const fetchModel = async () => {
       try {
         setIsLoading(true);
-
         const response = await fetch('/api/models/config');
         if (!response.ok) {
           throw new Error(`Error fetching model configurations: ${response.status}`);
         }
-
         const data = await response.json();
-
-        // use latest provider/model ref to check
-        if(providerRef.current == '' || modelRef.current== '') {
+        if (providerRef.current === '' || modelRef.current === '') {
           setSelectedProvider(data.defaultProvider);
-
-          // Find the default provider and set its default model
-          const selectedProvider = data.providers.find((p:Provider) => p.id === data.defaultProvider);
+          const selectedProvider = data.providers.find((p: Provider) => p.id === data.defaultProvider);
           if (selectedProvider && selectedProvider.models.length > 0) {
             setSelectedModel(selectedProvider.models[0].id);
           }
@@ -143,282 +172,342 @@ const Ask: React.FC<AskProps> = ({
         setIsLoading(false);
       }
     };
-    if(provider == '' || model == '') {
-      fetchModel()
+    if (provider === '' || model === '') {
+      fetchModel();
     }
   }, [provider, model]);
 
-  const clearConversation = () => {
+  const loadConversations = useCallback(async () => {
+    try {
+      const data = await conversationApi.getConversations(repoInfo.owner, repoInfo.repo);
+      setConversations(data);
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+    }
+  }, [repoInfo.owner, repoInfo.repo]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  const parsePages = useCallback((content: string): ChatPage[] => {
+    const pages: ChatPage[] = [];
+    const regex = /@@PAGE\|(.+?)\|(.+?)@@/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      if (lastIndex > 0) {
+        const pageContent = content.slice(lastIndex, match.index).trim();
+        if (pages.length > 0) {
+          pages[pages.length - 1].content = pageContent;
+        }
+      }
+      pages.push({
+        type: match[1] as 'plan' | 'update' | 'conclusion',
+        title: match[2],
+        content: '',
+      });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex > 0 && pages.length > 0) {
+      const pageContent = content.slice(lastIndex).trim();
+      pages[pages.length - 1].content = pageContent;
+    }
+    return pages;
+  }, []);
+
+  const getDisplayContent = useCallback((msg: ChatMessageItem): string => {
+    if (!msg.hasDeepResearch || !msg.pages || msg.pages.length === 0) {
+      return msg.content;
+    }
+    const idx = msg.currentPage ?? msg.pages.length - 1;
+    const page = msg.pages[idx];
+    if (!page || !page.content) return msg.content;
+    return page.content;
+  }, []);
+
+  const loadMessages = useCallback(async (conversationId: string) => {
+    try {
+      const data = await conversationApi.getConversationMessages(conversationId);
+      const items: ChatMessageItem[] = data.map((msg: ConversationMessage) => {
+        const hasDR = msg.messageType === 'deep_research';
+        const pages = hasDR ? parsePages(msg.content) : undefined;
+        return {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          createdAt: msg.createdAt,
+          feedbackStatus: msg.feedbackStatus,
+          hasDeepResearch: hasDR,
+          pages,
+          currentPage: pages ? pages.length - 1 : undefined,
+        };
+      });
+      setChatMessages(items);
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+      setChatMessages([]);
+    }
+  }, [parsePages]);
+
+  const handleSelectConversation = useCallback(async (conversationId: string) => {
+    if (isLoading) return;
+    if (conversationId === currentConversationId) return;
+    setCurrentConversationId(conversationId);
+    await loadMessages(conversationId);
+  }, [currentConversationId, loadMessages, isLoading]);
+
+  const handleNewConversation = useCallback(() => {
+    if (isLoading) return;
+    setCurrentConversationId(null);
+    setChatMessages([]);
     setQuestion('');
-    setResponse('');
-    setConversationHistory([]);
-    setResearchIteration(0);
-    setResearchComplete(false);
-    setResearchStages([]);
-    setCurrentStageIndex(0);
     if (inputRef.current) {
       inputRef.current.focus();
     }
-  };
-  const downloadresponse = () =>{
-  const blob = new Blob([response], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `response-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.md`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+  }, []);
 
-  // Function to check if research is complete based on response content
-  const checkIfResearchComplete = (content: string): boolean => {
-    // Check for explicit final conclusion markers
-    if (content.includes('## Final Conclusion')) {
-      return true;
+  const handleDeleteConversation = useCallback(async (conversationId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await conversationApi.deleteConversation(conversationId);
+    } catch (err) {
+      console.error('Failed to delete conversation:', err);
     }
-
-    // Check for conclusion sections that don't indicate further research
-    if ((content.includes('## Conclusion') || content.includes('## Summary')) &&
-      !content.includes('I will now proceed to') &&
-      !content.includes('Next Steps') &&
-      !content.includes('next iteration')) {
-      return true;
+    setConversations(prev => prev.filter(c => c.id !== conversationId));
+    if (currentConversationId === conversationId) {
+      const remaining = conversations.filter(c => c.id !== conversationId);
+      if (remaining.length > 0) {
+        setCurrentConversationId(remaining[0].id);
+        loadMessages(remaining[0].id);
+      } else {
+        setCurrentConversationId(null);
+        setChatMessages([]);
+      }
     }
+  }, [currentConversationId, conversations, loadMessages]);
 
-    // Check for phrases that explicitly indicate completion
-    if (content.includes('This concludes our research') ||
-      content.includes('This completes our investigation') ||
-      content.includes('This concludes the deep research process') ||
-      content.includes('Key Findings and Implementation Details') ||
-      content.includes('In conclusion,') ||
-      (content.includes('Final') && content.includes('Conclusion'))) {
-      return true;
-    }
-
-    // Check for topic-specific completion indicators
-    if (content.includes('Dockerfile') &&
-      (content.includes('This Dockerfile') || content.includes('The Dockerfile')) &&
-      !content.includes('Next Steps') &&
-      !content.includes('In the next iteration')) {
-      return true;
-    }
-
-    return false;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!question.trim() || isLoading) return;
+    await handleSendMessage();
   };
 
-  // Function to extract research stages from the response
-  const extractResearchStage = (content: string, iteration: number): ResearchStage | null => {
-    // Check for research plan (first iteration)
-    if (iteration === 1 && content.includes('## Research Plan')) {
-      const planMatch = content.match(/## Research Plan([\s\S]*?)(?:## Next Steps|$)/);
-      if (planMatch) {
-        return {
-          title: 'Research Plan',
-          content: content,
-          iteration: 1,
-          type: 'plan'
+  const handleSendMessage = async () => {
+    const userContent = question.trim();
+    if (!userContent || isLoading) return;
+
+    let activeConversationId = currentConversationId;
+
+    if (!activeConversationId) {
+      try {
+        const req: CreateConversationRequest = {
+          repoOwner: repoInfo.owner,
+          repoName: repoInfo.repo,
+          repoType: repoInfo.type,
+          title: makeConversationTitle(userContent),
         };
+        const newConv = await conversationApi.createConversation(req);
+        activeConversationId = newConv.id;
+        setConversations(prev => [newConv, ...prev]);
+        setCurrentConversationId(newConv.id);
+      } catch (err) {
+        console.error('Failed to create conversation:', err);
+        activeConversationId = `temp-${Date.now()}`;
+        const tempConv: Conversation = {
+          id: activeConversationId,
+          userId: '',
+          repoOwner: repoInfo.owner,
+          repoName: repoInfo.repo,
+          repoType: repoInfo.type,
+          title: makeConversationTitle(userContent),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setConversations(prev => [tempConv, ...prev]);
+        setCurrentConversationId(activeConversationId);
       }
     }
 
-    // Check for research updates (iterations 1-4)
-    if (iteration >= 1 && iteration <= 4) {
-      const updateMatch = content.match(new RegExp(`## Research Update ${iteration}([\\s\\S]*?)(?:## Next Steps|$)`));
-      if (updateMatch) {
-        return {
-          title: `Research Update ${iteration}`,
-          content: content,
-          iteration: iteration,
-          type: 'update'
-        };
-      }
-    }
+    const userMessage: ChatMessageItem = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: userContent,
+      createdAt: new Date().toISOString(),
+    };
 
-    // Check for final conclusion
-    if (content.includes('## Final Conclusion')) {
-      const conclusionMatch = content.match(/## Final Conclusion([\s\S]*?)$/);
-      if (conclusionMatch) {
-        return {
-          title: 'Final Conclusion',
-          content: content,
-          iteration: iteration,
-          type: 'conclusion'
-        };
-      }
-    }
+    const assistantMsgId = `assistant-${Date.now()}`;
+    const newAssistantMsg: ChatMessageItem = {
+      id: assistantMsgId,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: new Date().toISOString(),
+      isStreaming: true,
+      ...(deepResearch ? { hasDeepResearch: true, pages: [], currentPage: 0 } : {}),
+    };
 
-    return null;
-  };
-
-  // Function to navigate to a specific research stage
-  const navigateToStage = (index: number) => {
-    if (index >= 0 && index < researchStages.length) {
-      setCurrentStageIndex(index);
-      setResponse(researchStages[index].content);
-    }
-  };
-
-  // Function to navigate to the next research stage
-  const navigateToNextStage = () => {
-    if (currentStageIndex < researchStages.length - 1) {
-      navigateToStage(currentStageIndex + 1);
-    }
-  };
-
-  // Function to navigate to the previous research stage
-  const navigateToPreviousStage = () => {
-    if (currentStageIndex > 0) {
-      navigateToStage(currentStageIndex - 1);
-    }
-  };
-
-  // WebSocket reference
-  const webSocketRef = useRef<WebSocket | null>(null);
-
-  // Function to continue research automatically
-  const continueResearch = async () => {
-    if (!deepResearch || researchComplete || !response || isLoading) return;
-
-    // Add a small delay to allow the user to read the current response
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
+    setChatMessages(prev => [...prev, userMessage, newAssistantMsg]);
+    setQuestion('');
     setIsLoading(true);
 
     try {
-      // Store the current response for use in the history
-      const currentResponse = response;
-
-      // Create a new message from the AI's previous response
-      const newHistory: Message[] = [
-        ...conversationHistory,
-        {
-          role: 'assistant',
-          content: currentResponse
-        },
-        {
-          role: 'user',
-          content: '[DEEP RESEARCH] Continue the research'
-        }
-      ];
-
-      // Update conversation history
-      setConversationHistory(newHistory);
-
-      // Increment research iteration
-      const newIteration = researchIteration + 1;
-      setResearchIteration(newIteration);
-
-      // Clear previous response
-      setResponse('');
-
-      // Prepare the request body
-      const requestBody: ChatCompletionRequest = {
-        repo_url: getRepoUrl(repoInfo),
-        type: repoInfo.type,
-        messages: newHistory.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content })),
-        provider: selectedProvider,
-        model: isCustomSelectedModel ? customSelectedModel : selectedModel,
-        language: language
-      };
-
-      // Add tokens if available
-      if (repoInfo?.token) {
-        requestBody.token = repoInfo.token;
-      }
-
-      // Close any existing WebSocket connection
-      closeWebSocket(webSocketRef.current);
-
-      let fullResponse = '';
-
-      // Create a new WebSocket connection
-      webSocketRef.current = createChatWebSocket(
-        requestBody,
-        // Message handler
-        (message: string) => {
-          fullResponse += message;
-          setResponse(fullResponse);
-
-          // Extract research stage if this is a deep research response
-          if (deepResearch) {
-            const stage = extractResearchStage(fullResponse, newIteration);
-            if (stage) {
-              // Add the stage to the research stages if it's not already there
-              setResearchStages(prev => {
-                // Check if we already have this stage
-                const existingStageIndex = prev.findIndex(s => s.iteration === stage.iteration && s.type === stage.type);
-                if (existingStageIndex >= 0) {
-                  // Update existing stage
-                  const newStages = [...prev];
-                  newStages[existingStageIndex] = stage;
-                  return newStages;
-                } else {
-                  // Add new stage
-                  return [...prev, stage];
-                }
-              });
-
-              // Update current stage index to the latest stage
-              setCurrentStageIndex(researchStages.length);
-            }
-          }
-        },
-        // Error handler
-        (error: Event) => {
-          console.error('WebSocket error:', error);
-          setResponse(prev => prev + '\n\nError: WebSocket connection failed. Falling back to HTTP...');
-
-          // Fallback to HTTP if WebSocket fails
-          fallbackToHttp(requestBody);
-        },
-        // Close handler
-        () => {
-          // Check if research is complete when the WebSocket closes
-          const isComplete = checkIfResearchComplete(fullResponse);
-
-          // Force completion after a maximum number of iterations (5)
-          const forceComplete = newIteration >= 5;
-
-          if (forceComplete && !isComplete) {
-            // If we're forcing completion, append a comprehensive conclusion to the response
-            const completionNote = "\n\n## Final Conclusion\nAfter multiple iterations of deep research, we've gathered significant insights about this topic. This concludes our investigation process, having reached the maximum number of research iterations. The findings presented across all iterations collectively form our comprehensive answer to the original question.";
-            fullResponse += completionNote;
-            setResponse(fullResponse);
-            setResearchComplete(true);
-          } else {
-            setResearchComplete(isComplete);
-          }
-
-          setIsLoading(false);
-        }
+      const savedUserMsg = await conversationApi.createMessage(activeConversationId, {
+        role: 'user',
+        content: userContent,
+      });
+      setChatMessages(prev =>
+        prev.map(msg =>
+          msg.id === userMessage.id
+            ? { ...msg, id: savedUserMsg.id }
+            : msg
+        )
       );
-    } catch (error) {
-      console.error('Error during API call:', error);
-      setResponse(prev => prev + '\n\nError: Failed to continue research. Please try again.');
-      setResearchComplete(true);
+    } catch (err) {
+      console.error('Failed to save user message:', err);
+    }
+
+    const wsMessages = [...chatMessages, userMessage].map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    }));
+
+    const requestBody: ChatCompletionRequest = {
+      repo_url: getRepoUrl(repoInfo),
+      type: repoInfo.type,
+      messages: wsMessages,
+      provider: selectedProvider,
+      model: isCustomSelectedModel ? customSelectedModel : selectedModel,
+      language: language,
+      top_k: userTopKRef.current,
+      dimension: userDimensionRef.current,
+    };
+
+    if (repoInfo?.token) {
+      requestBody.token = repoInfo.token;
+    }
+
+    closeWebSocket(webSocketRef.current);
+
+    let fullResponse = '';
+    let currentPageContent = '';
+    const pageMarkerRe = /^@@PAGE\|(.+?)\|(.+?)@@$/;
+
+    const handleMessage = (message: string) => {
+      const markerMatch = message.match(pageMarkerRe);
+      if (markerMatch) {
+        fullResponse += message;
+        setChatMessages(prev =>
+          prev.map(msg => {
+            if (msg.id !== assistantMsgId) return msg;
+            const pages = [...(msg.pages || [])];
+            if (pages.length > 0) {
+              pages[pages.length - 1] = { ...pages[pages.length - 1], content: currentPageContent };
+            }
+            pages.push({
+              type: markerMatch[1] as 'plan' | 'update' | 'conclusion',
+              title: markerMatch[2],
+              content: '',
+            });
+            currentPageContent = '';
+            return {
+              ...msg,
+              hasDeepResearch: true,
+              pages,
+              currentPage: pages.length - 1,
+            };
+          })
+        );
+        return;
+      }
+      fullResponse += message;
+      currentPageContent += message;
+      setChatMessages(prev =>
+        prev.map(msg => {
+          if (msg.id !== assistantMsgId) return msg;
+          const pages = msg.pages ? [...msg.pages] : undefined;
+          if (pages && pages.length > 0) {
+            const lastIdx = pages.length - 1;
+            pages[lastIdx] = { ...pages[lastIdx], content: currentPageContent };
+          }
+          return { ...msg, content: fullResponse, pages };
+        })
+      );
+    };
+
+    const handleError = (error: Event) => {
+      console.error('WebSocket error:', error);
+      fallbackToHttp(requestBody, assistantMsgId);
+    };
+
+    const handleClose = () => {
+      setChatMessages(prev =>
+        prev.map(msg => {
+          if (msg.id !== assistantMsgId) return msg;
+          const pages = [...(msg.pages || [])];
+          if (pages.length > 0 && currentPageContent) {
+            pages[pages.length - 1] = { ...pages[pages.length - 1], content: currentPageContent };
+          }
+          return {
+            ...msg,
+            isStreaming: false,
+            pages,
+            currentPage: pages.length > 0 ? pages.length - 1 : undefined,
+          };
+        })
+      );
       setIsLoading(false);
+
+      if (activeConversationId && fullResponse) {
+        conversationApi
+          .createMessage(activeConversationId, {
+            role: 'assistant',
+            content: fullResponse,
+            ...(deepResearch ? { messageType: 'deep_research' as const } : {}),
+          })
+          .then((savedAssistantMsg) => {
+            setChatMessages(prev =>
+              prev.map(msg =>
+                msg.id === assistantMsgId
+                  ? { ...msg, id: savedAssistantMsg.id, feedbackStatus: savedAssistantMsg.feedbackStatus }
+                  : msg
+              )
+            );
+          })
+          .catch(err => console.error('Failed to save assistant message:', err));
+
+        setConversations(prev =>
+          prev.map(c =>
+            c.id === activeConversationId
+              ? { ...c, updatedAt: new Date().toISOString() }
+              : c
+          )
+        );
+      }
+    };
+
+    if (deepResearch) {
+      webSocketRef.current = createDeepResearchWebSocket(
+        requestBody, handleMessage, handleError, handleClose,
+      );
+    } else {
+      webSocketRef.current = createChatWebSocket(
+        requestBody, handleMessage, handleError, handleClose,
+      );
     }
   };
 
-  // Fallback to HTTP if WebSocket fails
-  const fallbackToHttp = async (requestBody: ChatCompletionRequest) => {
+  const fallbackToHttp = async (requestBody: ChatCompletionRequest, assistantId: string) => {
     try {
-      // Make the API call using HTTP
       const apiResponse = await fetch(`/api/chat/stream`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
       });
 
       if (!apiResponse.ok) {
         throw new Error(`API error: ${apiResponse.status}`);
       }
 
-      // Process the streaming response
       const reader = apiResponse.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -426,275 +515,280 @@ const Ask: React.FC<AskProps> = ({
         throw new Error('Failed to get response reader');
       }
 
-      // Read the stream
       let fullResponse = '';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         const chunk = decoder.decode(value, { stream: true });
         fullResponse += chunk;
-        setResponse(fullResponse);
-
-        // Extract research stage if this is a deep research response
-        if (deepResearch) {
-          const stage = extractResearchStage(fullResponse, researchIteration);
-          if (stage) {
-            // Add the stage to the research stages
-            setResearchStages(prev => {
-              const existingStageIndex = prev.findIndex(s => s.iteration === stage.iteration && s.type === stage.type);
-              if (existingStageIndex >= 0) {
-                const newStages = [...prev];
-                newStages[existingStageIndex] = stage;
-                return newStages;
-              } else {
-                return [...prev, stage];
-              }
-            });
-          }
-        }
+        setChatMessages(prev =>
+          prev.map(msg =>
+            msg.id === assistantId
+              ? { ...msg, content: fullResponse }
+              : msg
+          )
+        );
       }
 
-      // Check if research is complete
-      const isComplete = checkIfResearchComplete(fullResponse);
+      setChatMessages(prev =>
+        prev.map(msg =>
+          msg.id === assistantId
+            ? { ...msg, isStreaming: false }
+            : msg
+        )
+      );
 
-      // Force completion after a maximum number of iterations (5)
-      const forceComplete = researchIteration >= 5;
-
-      if (forceComplete && !isComplete) {
-        // If we're forcing completion, append a comprehensive conclusion to the response
-        const completionNote = "\n\n## Final Conclusion\nAfter multiple iterations of deep research, we've gathered significant insights about this topic. This concludes our investigation process, having reached the maximum number of research iterations. The findings presented across all iterations collectively form our comprehensive answer to the original question.";
-        fullResponse += completionNote;
-        setResponse(fullResponse);
-        setResearchComplete(true);
-      } else {
-        setResearchComplete(isComplete);
+      if (currentConversationId && fullResponse) {
+        conversationApi
+          .createMessage(currentConversationId, {
+            role: 'assistant',
+            content: fullResponse,
+            ...(deepResearch ? { messageType: 'deep_research' as const } : {}),
+          })
+          .then((savedAssistantMsg) => {
+            setChatMessages(prev =>
+              prev.map(msg =>
+                msg.id === assistantId
+                  ? { ...msg, id: savedAssistantMsg.id, feedbackStatus: savedAssistantMsg.feedbackStatus }
+                  : msg
+              )
+            );
+          })
+          .catch(err => console.error('Failed to save assistant message:', err));
       }
     } catch (error) {
       console.error('Error during HTTP fallback:', error);
-      setResponse(prev => prev + '\n\nError: Failed to get a response. Please try again.');
-      setResearchComplete(true);
+      setChatMessages(prev =>
+        prev.map(msg =>
+          msg.id === assistantId
+            ? { ...msg, content: msg.content + '\n\nError: Failed to get a response. Please try again.', isStreaming: false }
+            : msg
+        )
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Effect to continue research when response is updated
-  useEffect(() => {
-    if (deepResearch && response && !isLoading && !researchComplete) {
-      const isComplete = checkIfResearchComplete(response);
-      if (isComplete) {
-        setResearchComplete(true);
-      } else if (researchIteration > 0 && researchIteration < 5) {
-        // Only auto-continue if we're already in a research process and haven't reached max iterations
-        // Use setTimeout to avoid potential infinite loops
-        const timer = setTimeout(() => {
-          continueResearch();
-        }, 1000);
-        return () => clearTimeout(timer);
+  const handleDeleteMessage = async (messageId: string) => {
+    setChatMessages(prev => prev.filter(msg => msg.id !== messageId));
+    if (currentConversationId) {
+      try {
+        await conversationApi.deleteMessage(currentConversationId, messageId);
+      } catch (err) {
+        console.error('Failed to delete message:', err);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [response, isLoading, deepResearch, researchComplete, researchIteration]);
-
-  // Effect to update research stages when the response changes
-  useEffect(() => {
-    if (deepResearch && response && !isLoading) {
-      // Try to extract a research stage from the response
-      const stage = extractResearchStage(response, researchIteration);
-      if (stage) {
-        // Add or update the stage in the research stages
-        setResearchStages(prev => {
-          // Check if we already have this stage
-          const existingStageIndex = prev.findIndex(s => s.iteration === stage.iteration && s.type === stage.type);
-          if (existingStageIndex >= 0) {
-            // Update existing stage
-            const newStages = [...prev];
-            newStages[existingStageIndex] = stage;
-            return newStages;
-          } else {
-            // Add new stage
-            return [...prev, stage];
-          }
-        });
-
-        // Update current stage index to point to this stage
-        setCurrentStageIndex(prev => {
-          const newIndex = researchStages.findIndex(s => s.iteration === stage.iteration && s.type === stage.type);
-          return newIndex >= 0 ? newIndex : prev;
-        });
-      }
-    }
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [response, isLoading, deepResearch, researchIteration]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!question.trim() || isLoading) return;
-
-    handleConfirmAsk();
   };
 
-  // Handle confirm and send request
-  const handleConfirmAsk = async () => {
-    setIsLoading(true);
-    setResponse('');
-    setResearchIteration(0);
-    setResearchComplete(false);
+  const handleLike = useCallback(async (messageId: string) => {
+    if (!currentConversationId) return;
+    const msg = chatMessages.find(m => m.id === messageId);
+    if (!msg || msg.feedbackStatus) return;
+
+    setChatMessages(prev =>
+      prev.map(m => m.id === messageId ? { ...m, feedbackStatus: 'liked' } : m)
+    );
 
     try {
-      // Create initial message
-      const initialMessage: Message = {
-        role: 'user',
-        content: deepResearch ? `[DEEP RESEARCH] ${question}` : question
-      };
-
-      // Set initial conversation history
-      const newHistory: Message[] = [initialMessage];
-      setConversationHistory(newHistory);
-
-      // Prepare request body
-      const requestBody: ChatCompletionRequest = {
-        repo_url: getRepoUrl(repoInfo),
-        type: repoInfo.type,
-        messages: newHistory.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content })),
-        provider: selectedProvider,
-        model: isCustomSelectedModel ? customSelectedModel : selectedModel,
-        language: language
-      };
-
-      // Add tokens if available
-      if (repoInfo?.token) {
-        requestBody.token = repoInfo.token;
-      }
-
-      // Close any existing WebSocket connection
-      closeWebSocket(webSocketRef.current);
-
-      let fullResponse = '';
-
-      // Create a new WebSocket connection
-      webSocketRef.current = createChatWebSocket(
-        requestBody,
-        // Message handler
-        (message: string) => {
-          fullResponse += message;
-          setResponse(fullResponse);
-
-          // Extract research stage if this is a deep research response
-          if (deepResearch) {
-            const stage = extractResearchStage(fullResponse, 1); // First iteration
-            if (stage) {
-              // Add the stage to the research stages
-              setResearchStages([stage]);
-              setCurrentStageIndex(0);
-            }
-          }
-        },
-        // Error handler
-        (error: Event) => {
-          console.error('WebSocket error:', error);
-          setResponse(prev => prev + '\n\nError: WebSocket connection failed. Falling back to HTTP...');
-
-          // Fallback to HTTP if WebSocket fails
-          fallbackToHttp(requestBody);
-        },
-        // Close handler
-        () => {
-          // If deep research is enabled, check if we should continue
-          if (deepResearch) {
-            const isComplete = checkIfResearchComplete(fullResponse);
-            setResearchComplete(isComplete);
-
-            // If not complete, start the research process
-            if (!isComplete) {
-              setResearchIteration(1);
-              // The continueResearch function will be triggered by the useEffect
-            }
-          }
-
-          setIsLoading(false);
-        }
+      await conversationApi.submitFeedback(currentConversationId, messageId, {
+        feedbackType: 'liked',
+      });
+    } catch (err) {
+      console.error('Failed to submit like feedback:', err);
+      setChatMessages(prev =>
+        prev.map(m => m.id === messageId ? { ...m, feedbackStatus: undefined } : m)
       );
-    } catch (error) {
-      console.error('Error during API call:', error);
-      setResponse(prev => prev + '\n\nError: Failed to get a response. Please try again.');
-      setResearchComplete(true);
-      setIsLoading(false);
+    }
+  }, [currentConversationId, chatMessages]);
+
+  const handleDislikeClick = useCallback((messageId: string) => {
+    const msg = chatMessages.find(m => m.id === messageId);
+    if (!msg || msg.feedbackStatus) return;
+    setFeedbackTargetMsgId(messageId);
+    setFeedbackComment('');
+    setFeedbackModalOpen(true);
+  }, [chatMessages]);
+
+  const handleSubmitDislikeFeedback = useCallback(async () => {
+    const messageId = feedbackTargetMsgId;
+    if (!currentConversationId || !messageId) return;
+
+    setFeedbackSubmitting(true);
+
+    setChatMessages(prev =>
+      prev.map(m => m.id === messageId ? { ...m, feedbackStatus: 'disliked' } : m)
+    );
+
+    try {
+      await conversationApi.submitFeedback(currentConversationId, messageId, {
+        feedbackType: 'disliked',
+        comment: feedbackComment.trim() || undefined,
+      });
+    } catch (err) {
+      console.error('Failed to submit dislike feedback:', err);
+      setChatMessages(prev =>
+        prev.map(m => m.id === messageId ? { ...m, feedbackStatus: undefined } : m)
+      );
+    } finally {
+      setFeedbackSubmitting(false);
+      setFeedbackModalOpen(false);
+      setFeedbackTargetMsgId(null);
+      setFeedbackComment('');
+    }
+  }, [currentConversationId, feedbackTargetMsgId, feedbackComment]);
+
+  const handleCloseFeedbackModal = useCallback(() => {
+    setFeedbackModalOpen(false);
+    setFeedbackTargetMsgId(null);
+    setFeedbackComment('');
+  }, []);
+
+  const formatTime = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+      if (isToday) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } catch {
+      return '';
     }
   };
 
-  const [buttonWidth, setButtonWidth] = useState(0);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  // Measure button width and update state
-  useEffect(() => {
-    if (buttonRef.current) {
-      const width = buttonRef.current.offsetWidth;
-      setButtonWidth(width);
+  const makeConversationTitle = useCallback((text: string, maxLen: number = 50): string => {
+    const trimmed = text.trim();
+    if (trimmed.length <= maxLen) return trimmed;
+    const sliced = trimmed.slice(0, maxLen);
+    const lastPunct = Math.max(
+      sliced.lastIndexOf('。'),
+      sliced.lastIndexOf('，'),
+      sliced.lastIndexOf('？'),
+      sliced.lastIndexOf('?'),
+      sliced.lastIndexOf('！'),
+      sliced.lastIndexOf('!'),
+      sliced.lastIndexOf(' '),
+      sliced.lastIndexOf('\n'),
+    );
+    if (lastPunct > maxLen * 0.5) {
+      return sliced.slice(0, lastPunct) + '...';
     }
-  }, [messages.ask?.askButton, isLoading]);
+    return sliced + '...';
+  }, []);
+
+  const currentConversation = conversations.find(c => c.id === currentConversationId);
 
   return (
-    <div>
-      <div className="p-4">
-        <div className="flex items-center justify-end mb-4">
-          {/* Model selection button */}
+    <div className="flex h-full bg-[var(--card-bg)] rounded-lg overflow-hidden">
+      {/* Left Sidebar */}
+      <div
+        className={`flex flex-col bg-[var(--background)]/50 border-r border-[var(--border-color)] transition-all duration-300 ${
+          sidebarCollapsed ? 'w-0 min-w-0 overflow-hidden' : 'w-64 min-w-[256px]'
+        }`}
+      >
+        {/* Sidebar Header */}
+        <div className="p-3 border-b border-[var(--border-color)]">
+          <button
+            onClick={handleNewConversation}
+            disabled={isLoading}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--border-color)] text-[var(--foreground)] transition-colors text-sm ${
+              isLoading
+                ? 'opacity-40 cursor-not-allowed'
+                : 'bg-[var(--card-bg)] hover:bg-[var(--accent-primary)]/10 hover:border-[var(--accent-primary)]/30'
+            }`}
+          >
+            <FaPlus className="text-xs" />
+            <span>{messages.ask?.newChat || '新对话'}</span>
+          </button>
+        </div>
+
+        {/* Conversation List */}
+        <div className="flex-1 overflow-y-auto p-2">
+          {conversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-[var(--muted)] text-xs p-4">
+              <FaComments className="text-2xl mb-2 opacity-50" />
+              <span>{messages.ask?.noConversations || '暂无对话记录'}</span>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {conversations.map(conv => (
+                <div
+                  key={conv.id}
+                  onClick={() => handleSelectConversation(conv.id)}
+                  className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors text-sm ${
+                    isLoading
+                      ? 'cursor-not-allowed opacity-50'
+                      : 'cursor-pointer'
+                  } ${
+                    currentConversationId === conv.id
+                      ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
+                      : 'hover:bg-[var(--background)]/80 text-[var(--foreground)]/80 border border-transparent'
+                  }`}
+                >
+                  <FaComments className="text-xs flex-shrink-0 opacity-60" />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm">
+                      {conv.title || (messages.ask?.untitled || '未命名对话')}
+                    </div>
+                    <div className="text-xs text-[var(--muted)] mt-0.5">
+                      {formatTime(conv.updatedAt || conv.createdAt)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteConversation(conv.id, e)}
+                    disabled={isLoading}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 hover:text-red-500 transition-all flex-shrink-0 disabled:hidden"
+                    title={messages.ask?.deleteConversation || '删除对话'}
+                  >
+                    <FaTrash className="text-xs" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar Footer - Model Info */}
+        <div className="p-3 border-t border-[var(--border-color)]">
           <button
             type="button"
             onClick={() => setIsModelSelectionModalOpen(true)}
-            className="text-xs px-2.5 py-1 rounded border border-[var(--border-color)]/40 bg-[var(--background)]/10 text-[var(--foreground)]/80 hover:bg-[var(--background)]/30 hover:text-[var(--foreground)] transition-colors flex items-center gap-1.5"
+            className="w-full text-xs px-2.5 py-1.5 rounded border border-[var(--border-color)]/40 bg-[var(--background)]/10 text-[var(--foreground)]/80 hover:bg-[var(--background)]/30 hover:text-[var(--foreground)] transition-colors flex items-center gap-1.5 truncate"
           >
-            <span>{selectedProvider}/{isCustomSelectedModel ? customSelectedModel : selectedModel}</span>
-            <svg className="h-3.5 w-3.5 text-[var(--accent-primary)]/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="truncate">{selectedProvider}/{isCustomSelectedModel ? customSelectedModel : selectedModel}</span>
+            <svg className="h-3.5 w-3.5 text-[var(--accent-primary)]/70 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
         </div>
+      </div>
 
-        {/* Question input */}
-        <form onSubmit={handleSubmit} className="mt-4">
-          <div className="relative">
-            <input
-              ref={inputRef}
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder={messages.ask?.placeholder || 'What would you like to know about this codebase?'}
-              className="block w-full rounded-md border border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--foreground)] px-5 py-3.5 text-base shadow-sm focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:outline-none transition-all"
-              style={{ paddingRight: `${buttonWidth + 24}px` }}
-              disabled={isLoading}
-            />
+      {/* Right Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        {/* Chat Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)] bg-[var(--card-bg)]">
+          <div className="flex items-center gap-2 min-w-0">
             <button
-              ref={buttonRef}
-              type="submit"
-              disabled={isLoading || !question.trim()}
-              className={`absolute right-3 top-1/2 transform -translate-y-1/2 px-4 py-2 rounded-md font-medium text-sm ${
-                isLoading || !question.trim()
-                  ? 'bg-[var(--button-disabled-bg)] text-[var(--button-disabled-text)] cursor-not-allowed'
-                  : 'bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary)]/90 shadow-sm'
-              } transition-all duration-200 flex items-center gap-1.5`}
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-1.5 rounded-md hover:bg-[var(--background)]/80 transition-colors text-[var(--muted)] hover:text-[var(--foreground)]"
+              title={sidebarCollapsed ? (messages.ask?.expandSidebar || '展开侧栏') : (messages.ask?.collapseSidebar || '收起侧栏')}
             >
-              {isLoading ? (
-                <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-white animate-spin" />
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                  </svg>
-                  <span>{messages.ask?.askButton || 'Ask'}</span>
-                </>
-              )}
+              {sidebarCollapsed ? <FaChevronRight size={12} /> : <FaChevronLeft size={12} />}
             </button>
+            <FaRobot className="text-[var(--accent-primary)] flex-shrink-0" />
+            <span className="text-sm font-medium text-[var(--foreground)] truncate">
+              {currentConversation?.title || messages.ask?.title || '代码问答'}
+            </span>
           </div>
-
-          {/* Deep Research toggle */}
-          <div className="flex items-center mt-2 justify-between">
+          <div className="flex items-center gap-2">
+            {/* Deep Research toggle */}
             <div className="group relative">
               <label className="flex items-center cursor-pointer">
-                <span className="text-xs text-gray-600 dark:text-gray-400 mr-2">{messages.ask?.deepResearch || '深度研究'}</span>
+                <span className="text-xs text-[var(--muted)] mr-2">
+                  {messages.ask?.deepResearch || '深度研究'}
+                </span>
                 <div className="relative">
                   <input
                     type="checkbox"
@@ -702,201 +796,204 @@ const Ask: React.FC<AskProps> = ({
                     onChange={() => setDeepResearch(!deepResearch)}
                     className="sr-only"
                   />
-                  <div className={`w-10 h-5 rounded-full transition-colors ${deepResearch ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
-                  <div className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform transform ${deepResearch ? 'translate-x-5' : ''}`}></div>
+                  <div className={`w-9 h-4.5 rounded-full transition-colors ${deepResearch ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                  <div className={`absolute left-0.5 top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-transform transform ${deepResearch ? 'translate-x-4.5' : ''}`} />
                 </div>
               </label>
-              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded p-2 w-72 z-10">
-                <div className="relative">
-                  <div className="absolute -bottom-2 left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
-                  <p className="mb-1">{messages.ask?.deepResearchTooltip || '深度研究进行多轮调查：'}</p>
-                  <ul className="list-disc pl-4 text-xs">
-                    <li><strong>初始研究：</strong>{messages.ask?.initialResearch || '制定研究计划和初步发现'}</li>
-                    <li><strong>第1轮：</strong>{messages.ask?.iteration1 || '深入探索特定方面'}</li>
-                    <li><strong>第2轮：</strong>{messages.ask?.iteration2 || '调查剩余问题'}</li>
-                    <li><strong>第3-4轮：</strong>{messages.ask?.iterations3to4 || '深入研究复杂领域'}</li>
-                    <li><strong>最终结论：</strong>{messages.ask?.finalConclusion || '基于所有轮次的综合答案'}</li>
-                  </ul>
-                  <p className="mt-1 text-xs italic">{messages.ask?.autoResearchNote || 'AI会自动继续研究直到完成（最多5轮）'}</p>
-                </div>
-              </div>
             </div>
-            {deepResearch && (
-              <div className="text-xs text-purple-600 dark:text-purple-400">
-                {messages.ask?.multiTurnEnabled || '已启用多轮研究流程'}
-                {researchIteration > 0 && !researchComplete && ` (${messages.ask?.iteration?.replace('{n}', String(researchIteration)) || `第 ${researchIteration} 轮`})`}
-                {researchComplete && ` (${messages.ask?.complete || '已完成'})`}
-              </div>
-            )}
-          </div>
-        </form>
-
-        {/* Response area */}
-        {response && (
-          <div className="border-t border-gray-200 dark:border-gray-700 mt-4">
-            <div
-              ref={responseRef}
-              className="p-4 max-h-[500px] overflow-y-auto"
-            >
-              <Markdown content={response} />
-            </div>
-
-            {/* Research navigation and clear button */}
-            <div className="p-2 flex justify-between items-center border-t border-gray-200 dark:border-gray-700">
-              {/* Research navigation */}
-              {deepResearch && researchStages.length > 1 && (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => navigateToPreviousStage()}
-                    disabled={currentStageIndex === 0}
-                    className={`p-1 rounded-md ${currentStageIndex === 0 ? 'text-gray-400 dark:text-gray-600' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
-                    aria-label="Previous stage"
-                  >
-                    <FaChevronLeft size={12} />
-                  </button>
-
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                    {currentStageIndex + 1} / {researchStages.length}
-                  </div>
-
-                  <button
-                    onClick={() => navigateToNextStage()}
-                    disabled={currentStageIndex === researchStages.length - 1}
-                    className={`p-1 rounded-md ${currentStageIndex === researchStages.length - 1 ? 'text-gray-400 dark:text-gray-600' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
-                    aria-label="Next stage"
-                  >
-                    <FaChevronRight size={12} />
-                  </button>
-
-                  <div className="text-xs text-gray-600 dark:text-gray-400 ml-2">
-                    {researchStages[currentStageIndex]?.title || `Stage ${currentStageIndex + 1}`}
-                  </div>
-                </div>
-              )}
-
-            <div className="flex items-center space-x-2">
-              {/* Download button */}
+            {currentConversationId && (
               <button
-                onClick={downloadresponse}
-                className="text-xs text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center gap-1"
-                title="下载响应为Markdown文件"
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                {messages.ask?.download || '下载'}
-              </button>
-
-              {/* Clear button */}
-              <button
-                id="ask-clear-conversation"
                 onClick={clearConversation}
-                className="text-xs text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 px-2 py-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
+                className="text-xs text-[var(--muted)] hover:text-red-500 px-2 py-1 rounded transition-colors"
               >
-                {messages.ask?.clearConversation || '清除对话'}
+                <FaTimes size={12} />
               </button>
-            </div>
-              </div>
-          </div>
-        )}
-
-        {/* Loading indicator */}
-        {isLoading && !response && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center space-x-2">
-              <div className="animate-pulse flex space-x-1">
-                <div className="h-2 w-2 bg-purple-600 rounded-full"></div>
-                <div className="h-2 w-2 bg-purple-600 rounded-full"></div>
-                <div className="h-2 w-2 bg-purple-600 rounded-full"></div>
-              </div>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {deepResearch
-                  ? (researchIteration === 0
-                    ? (messages.ask?.planningResearch || '规划研究方案...')
-                    : (messages.ask?.researchIterationInProgress?.replace('{n}', String(researchIteration)) || `第 ${researchIteration} 轮研究进行中...`))
-                  : (messages.ask?.thinking || '思考中...')}
-              </span>
-            </div>
-            {deepResearch && (
-              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 pl-5">
-                <div className="flex flex-col space-y-1">
-                  {researchIteration === 0 && (
-                    <>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.creatingResearchPlan || '创建研究计划...'}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.identifyingKeyAreas || '识别关键调查领域...'}</span>
-                      </div>
-                    </>
-                  )}
-                  {researchIteration === 1 && (
-                    <>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.exploringFirstArea || '深入探索第一个研究领域...'}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.analyzingCodePatterns || '分析代码模式和结构...'}</span>
-                      </div>
-                    </>
-                  )}
-                  {researchIteration === 2 && (
-                    <>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.investigatingRemaining || '调查剩余问题...'}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.connectingFindings || '连接之前轮次的发现...'}</span>
-                      </div>
-                    </>
-                  )}
-                  {researchIteration === 3 && (
-                    <>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.exploringDeeperConnections || '探索更深层次的关联...'}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.analyzingComplexPatterns || '分析复杂模式...'}</span>
-                      </div>
-                    </>
-                  )}
-                  {researchIteration === 4 && (
-                    <>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-teal-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.refiningConclusions || '完善研究结论...'}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-cyan-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.addressingEdgeCases || '处理剩余边缘情况...'}</span>
-                      </div>
-                    </>
-                  )}
-                  {researchIteration >= 5 && (
-                    <>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.finalizingAnswer || '最终整合综合答案...'}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        <span>{messages.ask?.synthesizingFindings || '综合所有研究发现...'}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
             )}
           </div>
-        )}
+        </div>
+
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {chatMessages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-[var(--muted)]">
+              <div className="relative mb-4">
+                <div className="absolute -inset-2 bg-[var(--accent-primary)]/5 rounded-full blur-md" />
+                <FaRobot className="text-5xl relative z-10 opacity-30" />
+              </div>
+              <p className="text-base font-medium mb-2">
+                {messages.ask?.welcomeTitle || '欢迎使用代码问答'}
+              </p>
+              <p className="text-sm text-center max-w-md">
+                {messages.ask?.welcomeSubtitle || '输入您的问题，AI 将基于代码仓库为您解答'}
+              </p>
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto space-y-4">
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  {msg.role === 'assistant' && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent-primary)]/10 flex items-center justify-center mt-1">
+                      <FaRobot className="text-sm text-[var(--accent-primary)]" />
+                    </div>
+                  )}
+                  <div
+                    className={`group relative max-w-[80%] rounded-2xl px-4 py-3 ${
+                      msg.role === 'user'
+                        ? 'bg-[var(--accent-primary)] text-white rounded-br-md'
+                        : 'bg-[var(--background)]/80 border border-[var(--border-color)] text-[var(--foreground)] rounded-bl-md'
+                    }`}
+                  >
+                    {msg.role === 'assistant' ? (
+                      <div className="text-sm">
+                        {msg.isStreaming && !getDisplayContent(msg) ? (
+                          <div className="flex items-center space-x-1.5 py-1">
+                            <div className="w-2 h-2 bg-[var(--accent-primary)]/60 rounded-full animate-pulse" />
+                            <div className="w-2 h-2 bg-[var(--accent-primary)]/60 rounded-full animate-pulse delay-75" />
+                            <div className="w-2 h-2 bg-[var(--accent-primary)]/60 rounded-full animate-pulse delay-150" />
+                          </div>
+                        ) : (
+                          <>
+                            {msg.hasDeepResearch && msg.pages && msg.pages.length > 1 && (
+                              <div className="flex items-center justify-between mb-2 pb-2 border-b border-[var(--border-color)]/30">
+                                <button
+                                  onClick={() => {
+                                    skipScrollRef.current = true;
+                                    setChatMessages(prev =>
+                                      prev.map(m =>
+                                        m.id === msg.id
+                                          ? { ...m, currentPage: Math.max(0, (m.currentPage ?? 0) - 1) }
+                                          : m
+                                      )
+                                    );
+                                  }}
+                                  disabled={(msg.currentPage ?? 0) <= 0}
+                                  className="text-xs px-2 py-0.5 rounded border border-[var(--border-color)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--foreground)]/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                  ← 上一页
+                                </button>
+                                <span className="text-xs text-[var(--muted)]">
+                                  {msg.pages[(msg.currentPage ?? msg.pages.length - 1)]?.title || ''}
+                                  &nbsp;({(msg.currentPage ?? msg.pages.length - 1) + 1}/{msg.pages.length})
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    skipScrollRef.current = true;
+                                    setChatMessages(prev =>
+                                      prev.map(m =>
+                                        m.id === msg.id
+                                          ? { ...m, currentPage: Math.min((msg.pages?.length ?? 1) - 1, (m.currentPage ?? 0) + 1) }
+                                          : m
+                                      )
+                                    );
+                                  }}
+                                  disabled={(msg.currentPage ?? 0) >= (msg.pages?.length ?? 1) - 1}
+                                  className="text-xs px-2 py-0.5 rounded border border-[var(--border-color)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--foreground)]/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                  下一页 →
+                                </button>
+                              </div>
+                            )}
+                            <Markdown content={getDisplayContent(msg)} />
+                            {/* Feedback buttons */}
+                            {!msg.isStreaming && msg.content && (
+                              <div className="flex items-center gap-1 mt-2 pt-1.5 border-t border-[var(--border-color)]/30">
+                                {msg.feedbackStatus ? (
+                                  <span className="text-xs text-[var(--muted)] flex items-center gap-1">
+                                    {msg.feedbackStatus === 'liked' ? (
+                                      <>
+                                        <FaThumbsUp className="text-[var(--accent-primary)]" size={11} />
+                                        <span className="text-[var(--accent-primary)]">已点赞</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <FaThumbsDown className="text-red-500" size={11} />
+                                        <span className="text-red-500">已反馈</span>
+                                      </>
+                                    )}
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleLike(msg.id)}
+                                      className="p-1 rounded hover:bg-[var(--accent-primary)]/10 text-[var(--muted)] hover:text-[var(--accent-primary)] transition-colors"
+                                      title="点赞"
+                                    >
+                                      <FaThumbsUp size={12} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDislikeClick(msg.id)}
+                                      className="p-1 rounded hover:bg-red-500/10 text-[var(--muted)] hover:text-red-500 transition-colors"
+                                      title="点踩"
+                                    >
+                                      <FaThumbsDown size={12} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-sm whitespace-pre-wrap break-words">{msg.content}</div>
+                    )}
+                    {/* Delete message button */}
+                    <button
+                      onClick={() => handleDeleteMessage(msg.id)}
+                      className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 w-5 h-5 rounded-full bg-[var(--card-bg)] border border-[var(--border-color)] flex items-center justify-center text-[var(--muted)] hover:text-red-500 hover:border-red-500/30 transition-all"
+                      title={messages.ask?.deleteMessage || '删除消息'}
+                    >
+                      <FaTimes size={8} />
+                    </button>
+                  </div>
+                  {msg.role === 'user' && (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[var(--accent-primary)] flex items-center justify-center mt-1">
+                      <FaUser className="text-sm text-white" />
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
+
+        {/* Input Area - Fixed at Bottom */}
+        <div className="border-t border-[var(--border-color)] bg-[var(--card-bg)] p-4">
+          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+            <div className="relative flex items-end gap-2">
+              <div className="flex-1 relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder={messages.ask?.placeholder || '输入您的问题...'}
+                  className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--foreground)] px-4 py-3 text-sm shadow-sm focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:outline-none transition-all pr-12"
+                  disabled={isLoading}
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !question.trim()}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all ${
+                    isLoading || !question.trim()
+                      ? 'text-[var(--muted)] cursor-not-allowed'
+                      : 'text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10'
+                  }`}
+                >
+                  {isLoading ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-[var(--accent-primary)] animate-spin" />
+                  ) : (
+                    <FaPaperPlane className="text-sm" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       </div>
 
       {/* Model Selection Modal */}
@@ -921,6 +1018,59 @@ const Ask: React.FC<AskProps> = ({
         authRequired={false}
         isAuthLoading={false}
       />
+
+      {/* Feedback Modal */}
+      {feedbackModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-[var(--card-bg)] rounded-xl shadow-xl w-full max-w-md p-6 mx-4 border border-[var(--border-color)]">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-[var(--foreground)]">
+                帮助改进回答
+              </h3>
+              <button
+                onClick={handleCloseFeedbackModal}
+                className="p-1 rounded hover:bg-[var(--background)]/80 text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+              >
+                <FaTimes size={14} />
+              </button>
+            </div>
+
+            <p className="text-sm text-[var(--muted)] mb-4">
+              请告诉我们这个回答存在哪些问题，我们将根据您的反馈进行改进。
+            </p>
+
+            <textarea
+              value={feedbackComment}
+              onChange={(e) => setFeedbackComment(e.target.value)}
+              placeholder="请描述具体问题（可选）..."
+              rows={4}
+              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--foreground)] px-3 py-2.5 text-sm shadow-sm focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[var(--accent-primary)]/30 focus:outline-none transition-all resize-none placeholder:text-[var(--muted)]/60"
+              autoFocus
+            />
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={handleCloseFeedbackModal}
+                className="px-4 py-2 text-sm rounded-lg border border-[var(--border-color)] text-[var(--foreground)] hover:bg-[var(--background)]/80 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSubmitDislikeFeedback}
+                disabled={feedbackSubmitting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {feedbackSubmitting ? (
+                  <div className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />
+                ) : (
+                  <FaThumbsDown size={12} />
+                )}
+                提交反馈
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

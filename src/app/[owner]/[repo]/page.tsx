@@ -495,8 +495,9 @@ Based ONLY on the content of the \`[RELEVANT_SOURCE_FILES]\`:
     *   Place citations at the end of the paragraph, under the diagram/table, or after the code snippet.
     *   Use the exact format: \`Sources: [filename.ext:start_line-end_line]()\` for a range, or \`Sources: [filename.ext:line_number]()\` for a single line. Multiple files can be cited: \`Sources: [file1.ext:1-10](), [file2.ext:5](), [dir/file3.ext]()\` (if the whole file is relevant and line numbers are not applicable or too broad).
     *   If an entire section is overwhelmingly based on one or two files, you can cite them under the section heading in addition to more specific citations within the section.
+    *   IMPORTANT(EXTREMELY IMPORTANT): Make sure Source Citations are added only after the mermaid diagram ends, and they must be added on a new line after \`\`\` as \`Sources: [filename.ext:start_line-end_line]()\`    
     *   IMPORTANT: You MUST cite AT LEAST 5 different source files throughout the wiki page to ensure comprehensive coverage.
-
+    
 7.  **Technical Accuracy:** All information must be derived SOLELY from the \`[RELEVANT_SOURCE_FILES]\`. Do not infer, invent, or use external knowledge about similar systems or common practices unless it's directly supported by the provided code. If information is not present in the provided files, do not include it or explicitly state its absence if crucial to the topic.
 
 8.  **Clarity and Conciseness:** Use clear, professional, and concise technical language suitable for other developers working on or learning about the project. Avoid unnecessary jargon, but use correct technical terms where appropriate.
@@ -2047,20 +2048,19 @@ IMPORTANT:
 
       {/* Ask Modal - Always render but conditionally show/hide */}
       <div className={`fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isAskModalOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <div className="bg-[var(--card-bg)] rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-          <div className="flex items-center justify-end p-3 absolute top-0 right-0 z-10">
+        <div className="bg-[var(--card-bg)] rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col relative">
+          <div className="flex items-center justify-end p-2 absolute top-0 right-0 z-20">
             <button
               onClick={() => {
-                // Just close the modal without clearing the conversation
                 setIsAskModalOpen(false);
               }}
               className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors bg-[var(--card-bg)]/80 rounded-full p-2"
               aria-label="Close"
             >
-              <FaTimes className="text-xl" />
+              <FaTimes className="text-lg" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-hidden">
             <Ask
               repoInfo={effectiveRepoInfo}
               provider={selectedProviderState}

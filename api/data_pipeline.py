@@ -11,7 +11,6 @@ import glob
 from adalflow.utils import get_adalflow_default_root_path
 from adalflow.core.db import LocalDB
 from api.config import configs, DEFAULT_EXCLUDED_DIRS, DEFAULT_EXCLUDED_FILES
-from api.ollama_patch import OllamaDocumentProcessor
 from urllib.parse import urlparse, urlunparse, quote
 import requests
 from requests.exceptions import RequestException
@@ -32,42 +31,11 @@ logger = logging.getLogger(__name__)
 MAX_EMBEDDING_TOKENS = 8192
 
 def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool = None) -> int:
-    """
-    Count the number of tokens in a text string using tiktoken.
-
-    Args:
-        text (str): The text to count tokens for.
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama', 'bedrock').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-
-    Returns:
-        int: The number of tokens in the text.
-    """
     try:
-        # Handle backward compatibility
-        if embedder_type is None and is_ollama_embedder is not None:
-            embedder_type = 'ollama' if is_ollama_embedder else None
-        
-        # Determine embedder type if not specified
-        if embedder_type is None:
-            from api.config import get_embedder_type
-            embedder_type = get_embedder_type()
-
-        # Choose encoding based on embedder type
-        if embedder_type in ('ollama', 'google', 'bedrock', 'dashscope'):
-            # Non-OpenAI embedders: use cl100k_base for a reasonable token estimate
-            encoding = tiktoken.get_encoding("cl100k_base")
-        else:  # OpenAI or default
-            # Use OpenAI embedding model encoding
-            encoding = tiktoken.encoding_for_model("text-embedding-3-small")
-
+        encoding = tiktoken.get_encoding("cl100k_base")
         return len(encoding.encode(text))
     except Exception as e:
-        # Fallback to a simple approximation if tiktoken fails
         logger.warning(f"Error counting tokens with tiktoken: {e}")
-        # Rough approximation: 4 characters per token
         return len(text) // 4
 
 def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_token: str = None) -> str:
@@ -145,30 +113,6 @@ download_github_repo = download_repo
 def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder: bool = None, 
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None,
                       included_dirs: List[str] = None, included_files: List[str] = None):
-    """
-    Recursively reads all documents in a directory and its subdirectories.
-
-    Args:
-        path (str): The root directory path.
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-        excluded_dirs (List[str], optional): List of directories to exclude from processing.
-            Overrides the default configuration if provided.
-        excluded_files (List[str], optional): List of file patterns to exclude from processing.
-            Overrides the default configuration if provided.
-        included_dirs (List[str], optional): List of directories to include exclusively.
-            When provided, only files in these directories will be processed.
-        included_files (List[str], optional): List of file patterns to include exclusively.
-            When provided, only files matching these patterns will be processed.
-
-    Returns:
-        list: A list of Document objects with metadata.
-    """
-    # Handle backward compatibility
-    if embedder_type is None and is_ollama_embedder is not None:
-        embedder_type = 'ollama' if is_ollama_embedder else None
     documents = []
     # File extensions to look for, prioritizing code files
     code_extensions = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".hpp", ".go", ".rs",
@@ -372,25 +316,8 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
     return documents
 
 def prepare_data_pipeline(embedder_type: str = None, is_ollama_embedder: bool = None):
-    """
-    Creates and returns the data transformation pipeline.
-
-    Args:
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-
-    Returns:
-        adal.Sequential: The data transformation pipeline
-    """
     from api.config import get_embedder_config, get_embedder_type
 
-    # Handle backward compatibility
-    if embedder_type is None and is_ollama_embedder is not None:
-        embedder_type = 'ollama' if is_ollama_embedder else None
-    
-    # Determine embedder type if not specified
     if embedder_type is None:
         embedder_type = get_embedder_type()
 
@@ -399,37 +326,19 @@ def prepare_data_pipeline(embedder_type: str = None, is_ollama_embedder: bool = 
 
     embedder = get_embedder(embedder_type=embedder_type)
 
-    # Choose appropriate processor based on embedder type
-    if embedder_type == 'ollama':
-        # Use Ollama document processor for single-document processing
-        embedder_transformer = OllamaDocumentProcessor(embedder=embedder)
-    else:
-        # Use batch processing for OpenAI and Google embedders
-        batch_size = embedder_config.get("batch_size", 500)
-        embedder_transformer = ToEmbeddings(
-            embedder=embedder, batch_size=batch_size
-        )
+    batch_size = embedder_config.get("batch_size", 500)
+    embedder_transformer = ToEmbeddings(
+        embedder=embedder, batch_size=batch_size
+    )
 
     data_transformer = adal.Sequential(
         splitter, embedder_transformer
-    )  # sequential will chain together splitter and embedder
+    )
     return data_transformer
 
 def transform_documents_and_save_to_db(
     documents: List[Document], db_path: str, embedder_type: str = None, is_ollama_embedder: bool = None
 ) -> LocalDB:
-    """
-    Transforms a list of documents and saves them to a local database.
-
-    Args:
-        documents (list): A list of `Document` objects.
-        db_path (str): The path to the local database file.
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-    """
-    # Get the data transformer
     data_transformer = prepare_data_pipeline(embedder_type, is_ollama_embedder)
 
     # Save the documents to a local database
@@ -484,6 +393,7 @@ def split_and_index_to_qdrant(
     embedder_type: str = None,
     chunk_size: int = 1500,
     chunk_overlap: int = 200,
+    dimension: int = None,
 ) -> int:
     """
     Split *documents* using Tree-sitter (for code) / fixed-length (for text),
@@ -506,7 +416,7 @@ def split_and_index_to_qdrant(
     if embedder_type is None:
         embedder_type = get_embedder_type()
 
-    embedder = get_embedder(embedder_type=embedder_type)
+    embedder = get_embedder(embedder_type=embedder_type, dimension=dimension)
     splitter = TreeSitterCodeSplitter(
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
@@ -667,34 +577,12 @@ class DatabaseManager:
     def prepare_database(self, repo_url_or_path: str, repo_type: str = None, access_token: str = None,
                          embedder_type: str = None, is_ollama_embedder: bool = None,
                          excluded_dirs: List[str] = None, excluded_files: List[str] = None,
-                         included_dirs: List[str] = None, included_files: List[str] = None) -> List[Document]:
-        """
-        Create a new database from the repository.
-
-        Args:
-            repo_type(str): Type of repository
-            repo_url_or_path (str): The URL or local path of the repository
-            access_token (str, optional): Access token for private repositories
-            embedder_type (str, optional): Embedder type to use ('openai', 'google', 'ollama').
-                                         If None, will be determined from configuration.
-            is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                               If None, will be determined from configuration.
-            excluded_dirs (List[str], optional): List of directories to exclude from processing
-            excluded_files (List[str], optional): List of file patterns to exclude from processing
-            included_dirs (List[str], optional): List of directories to include exclusively
-            included_files (List[str], optional): List of file patterns to include exclusively
-
-        Returns:
-            List[Document]: List of Document objects
-        """
-        # Handle backward compatibility
-        if embedder_type is None and is_ollama_embedder is not None:
-            embedder_type = 'ollama' if is_ollama_embedder else None
-        
+                         included_dirs: List[str] = None, included_files: List[str] = None,
+                         dimension: int = None) -> List[Document]:
         self.reset_database()
         self._create_repo(repo_url_or_path, repo_type, access_token)
         return self.prepare_db_index(embedder_type=embedder_type, excluded_dirs=excluded_dirs, excluded_files=excluded_files,
-                                   included_dirs=included_dirs, included_files=included_files)
+                                   included_dirs=included_dirs, included_files=included_files, dimension=dimension)
 
     def reset_database(self):
         """
@@ -773,37 +661,8 @@ class DatabaseManager:
 
     def prepare_db_index(self, embedder_type: str = None, is_ollama_embedder: bool = None,
                         excluded_dirs: List[str] = None, excluded_files: List[str] = None,
-                        included_dirs: List[str] = None, included_files: List[str] = None) -> List[Document]:
-        """
-        Prepare the Qdrant vector index for the repository.
-
-        Reads the source files, splits them into chunks using Tree-sitter (for
-        code) or a fixed-length splitter (for text), embeds each chunk, and
-        upserts the result into a Qdrant collection.
-
-        If the Qdrant collection for this repository already exists and
-        contains data, re-indexing is skipped so that repeated calls are fast.
-
-        When ``QDRANT_URL`` is not set the Qdrant data is kept in-memory
-        (useful for development and testing); set ``QDRANT_URL`` to point to
-        a persistent Qdrant instance in production (default port 6333).
-
-        Args:
-            embedder_type (str, optional): Embedder type to use ('openai', 'google', 'ollama').
-                                         If None, will be determined from configuration.
-            is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-            excluded_dirs (List[str], optional): List of directories to exclude from processing
-            excluded_files (List[str], optional): List of file patterns to exclude from processing
-            included_dirs (List[str], optional): List of directories to include exclusively
-            included_files (List[str], optional): List of file patterns to include exclusively
-
-        Returns:
-            List[Document]: Always an empty list (Qdrant is the sole store).
-        """
-        # Handle backward compatibility
-        if embedder_type is None and is_ollama_embedder is not None:
-            embedder_type = 'ollama' if is_ollama_embedder else None
-
+                        included_dirs: List[str] = None, included_files: List[str] = None,
+                        dimension: int = None) -> List[Document]:
         from api.config import get_embedder_type
         if embedder_type is None:
             embedder_type = get_embedder_type()
@@ -811,14 +670,15 @@ class DatabaseManager:
         repo_name = os.path.basename(self.repo_paths["save_repo_dir"])
 
         # Step 1: Check whether a collection for this repository already
-        # exists by name. If it exists, reuse it directly and skip splitting /
-        # vectorisation entirely.
+        # exists by name. If it exists, reuse it directly — the collection's
+        # own dimension is the source of truth.
         try:
             if QdrantManager.collection_exists_for_repo(repo_name):
+                existing_dim = QdrantManager.get_collection_dimension(repo_name)
                 logger.info(
-                    "Qdrant collection for '%s' already exists; "
+                    "Qdrant collection for '%s' already exists (dim=%s); "
                     "skipping re-indexing.",
-                    repo_name,
+                    repo_name, existing_dim,
                 )
                 # Reuse existing collection with a placeholder vector size.
                 # When the collection already exists, QdrantManager will not
@@ -828,8 +688,35 @@ class DatabaseManager:
         except Exception as exc:
             logger.warning("Could not check existing Qdrant collection: %s", exc)
 
-        # Step 2: New repository path. Create an empty collection first.
-        vector_size = 2560
+        # Step 2: New repository path.
+        if dimension is not None:
+            # User-specified dimension — use it directly, no probing needed
+            vector_size = dimension
+            logger.info("Using user-configured embedding dimension: %d", vector_size)
+        else:
+            # Determine the actual vector size by running a quick sample
+            # embedding with the configured embedder.
+            sample_text = "dimension probe"
+            vector_size = 1024  # fallback default
+            try:
+                embedder = get_embedder(embedder_type=embedder_type)
+                sample_vec = _get_embedding_vector(embedder, sample_text)
+                if sample_vec:
+                    vector_size = len(sample_vec)
+                    logger.info(
+                        "Detected embedding dimension: %d (embedder: %s)",
+                        vector_size, embedder_type,
+                    )
+                else:
+                    logger.warning(
+                        "Sample embedding returned empty; falling back to default "
+                        "vector size %d", vector_size,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to probe embedding dimension (%s); "
+                    "falling back to default vector size %d", exc, vector_size,
+                )
 
         self.qdrant_manager = QdrantManager(
             repo_name=repo_name,
@@ -849,13 +736,14 @@ class DatabaseManager:
         )
         logger.info("Total source documents: %d", len(documents))
 
-        self._build_qdrant_index(documents, embedder_type=embedder_type)
+        self._build_qdrant_index(documents, embedder_type=embedder_type, dimension=dimension)
         return []
 
     def _build_qdrant_index(
         self,
         documents: List[Document],
         embedder_type: str = None,
+        dimension: int = None,
     ) -> None:
         """
         Build (or rebuild) the Qdrant index for *documents*.
@@ -895,6 +783,7 @@ class DatabaseManager:
                 embedder_type=embedder_type,
                 chunk_size=chunk_size_chars,
                 chunk_overlap=chunk_size_chars // AVG_CHARS_PER_WORD,
+                dimension=dimension,
             )
             logger.info("Qdrant index built: %d chunks stored", total)
         except Exception as exc:

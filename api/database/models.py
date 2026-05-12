@@ -17,7 +17,7 @@ SQLAlchemy ORM 模型 — CodeWiki 用户认证与对话历史
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy import (
@@ -35,13 +35,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, relationship
 from sqlalchemy.sql import func
 
 
-def _utcnow() -> datetime:
-    """Return the current UTC datetime as a timezone-naive value.
+BEIJING_TZ = timezone(timedelta(hours=8))
 
-    MySQL DATETIME columns do not store timezone information.
-    All timestamps are stored and interpreted as UTC.
-    """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+def _beijingnow() -> datetime:
+    """Return the current Beijing time (UTC+8) as a timezone-naive value."""
+    return datetime.now(BEIJING_TZ).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -88,15 +87,15 @@ class User(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=_utcnow,
+        default=_beijingnow,
         server_default=func.now(),
         comment="账户创建时间",
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=_utcnow,
-        onupdate=_utcnow,
+        default=_beijingnow,
+        onupdate=_beijingnow,
         server_default=func.now(),
         comment="账户最后更新时间",
     )
@@ -139,46 +138,24 @@ class UserSettings(Base):
         unique=True,
         comment="关联的用户 ID，外键到 users.id",
     )
-    preferred_language = Column(
-        String(16),
-        nullable=False,
-        default="zh",
-        comment="界面首选语言，如 zh / en",
-    )
-    preferred_model = Column(
-        String(128),
-        nullable=True,
-        comment="用户偏好使用的 AI 模型标识符",
-    )
-    theme = Column(
-        String(16),
-        nullable=False,
-        default="light",
-        comment="UI 主题：light / dark",
-    )
-    notifications_enabled = Column(
-        Boolean,
-        nullable=False,
-        default=True,
-        comment="是否启用通知",
-    )
     extra_config = Column(
+        "config",
         JSON,
         nullable=True,
-        comment="扩展配置（JSON），用于存储未来新增的偏好字段",
+        comment="用户配置信息（JSON）",
     )
     created_at = Column(
         DateTime,
         nullable=False,
-        default=_utcnow,
+        default=_beijingnow,
         server_default=func.now(),
         comment="配置创建时间",
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=_utcnow,
-        onupdate=_utcnow,
+        default=_beijingnow,
+        onupdate=_beijingnow,
         server_default=func.now(),
         comment="配置最后更新时间",
     )
@@ -234,15 +211,15 @@ class Conversation(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=_utcnow,
+        default=_beijingnow,
         server_default=func.now(),
         comment="对话创建时间",
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=_utcnow,
-        onupdate=_utcnow,
+        default=_beijingnow,
+        onupdate=_beijingnow,
         server_default=func.now(),
         comment="对话最后更新时间（有新消息时自动更新）",
     )
@@ -301,10 +278,22 @@ class ConversationMessage(Base):
         nullable=True,
         comment="消息的 token 数量（可选，用于计费统计）",
     )
+    feedback_status = Column(
+        String(16),
+        nullable=True,
+        default=None,
+        comment="反馈状态：NULL（未反馈）、liked（点赞）、disliked（点踩），每条消息仅可反馈一次",
+    )
+    message_type = Column(
+        String(16),
+        nullable=False,
+        default="normal",
+        comment="消息类型：normal（普通问答）、deep_research（深度研究）",
+    )
     created_at = Column(
         DateTime,
         nullable=False,
-        default=_utcnow,
+        default=_beijingnow,
         server_default=func.now(),
         comment="消息创建时间",
     )
@@ -319,5 +308,63 @@ class ConversationMessage(Base):
         return (
             f"<ConversationMessage id={self.id} "
             f"role={self.role!r} conversation_id={self.conversation_id}>"
+        )
+
+
+# =============================================================
+# 5. 消息反馈表
+# =============================================================
+class MessageFeedback(Base):
+    """消息反馈表：存储用户对 AI 回答的点赞/点踩及文字反馈。"""
+
+    __tablename__ = "message_feedbacks"
+    __table_args__ = (
+        CheckConstraint(
+            "feedback_type IN ('liked', 'disliked')",
+            name="ck_msg_feedback_type",
+        ),
+    )
+
+    id = Column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        comment="反馈唯一标识（UUID）",
+    )
+    message_id = Column(
+        String(36),
+        ForeignKey("conversation_messages.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        comment="关联的消息 ID，一对一关系，外键到 conversation_messages.id",
+    )
+    user_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="提交反馈的用户 ID，外键到 users.id",
+    )
+    feedback_type = Column(
+        String(16),
+        nullable=False,
+        comment="反馈类型：liked（点赞）或 disliked（点踩）",
+    )
+    comment = Column(
+        Text,
+        nullable=True,
+        comment="点踩时的文字反馈（可选）",
+    )
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=_beijingnow,
+        server_default=func.now(),
+        comment="反馈提交时间",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<MessageFeedback id={self.id} "
+            f"type={self.feedback_type!r} message_id={self.message_id}>"
         )
 

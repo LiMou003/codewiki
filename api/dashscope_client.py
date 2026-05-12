@@ -451,15 +451,19 @@ class DashscopeClient(ModelClient):
 
             model = api_kwargs.get("model", "")
             workspace = api_kwargs.get("workspace")
+            dimension = api_kwargs.get("dimension")
             log.info(f"🔍 DashScope MultiModalEmbedding call with {len(valid_input)} texts")
 
             try:
-                response = MultiModalEmbedding.call(
-                    model=model,
-                    input=valid_input,
-                    api_key=self._api_key or os.getenv(self._env_api_key_name),
-                    workspace=workspace,
-                )
+                call_args: dict = {
+                    "model": model,
+                    "input": valid_input,
+                    "api_key": self._api_key or os.getenv(self._env_api_key_name),
+                    "workspace": workspace,
+                }
+                if dimension is not None:
+                    call_args["dimension"] = dimension
+                response = MultiModalEmbedding.call(**call_args)
                 log.info(f"🔍 DashScope API call successful, status: {response.status_code}")
                 result = self.parse_embedding_response(response)
 
@@ -583,15 +587,19 @@ class DashscopeClient(ModelClient):
 
             model = api_kwargs.get("model", "")
             workspace = api_kwargs.get("workspace")
+            dimension = api_kwargs.get("dimension")
             log.info(f"🔍 DashScope async MultiModalEmbedding call with {len(valid_input)} texts")
 
             try:
-                response = await AioMultiModalEmbedding.call(
-                    model=model,
-                    input=valid_input,
-                    api_key=self._api_key or os.getenv(self._env_api_key_name),
-                    workspace=workspace,
-                )
+                call_args: dict = {
+                    "model": model,
+                    "input": valid_input,
+                    "api_key": self._api_key or os.getenv(self._env_api_key_name),
+                    "workspace": workspace,
+                }
+                if dimension is not None:
+                    call_args["dimension"] = dimension
+                response = await AioMultiModalEmbedding.call(**call_args)
                 log.info(f"🔍 DashScope async API call successful, status: {response.status_code}")
                 result = self.parse_embedding_response(response)
 

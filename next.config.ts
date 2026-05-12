@@ -63,6 +63,18 @@ const nextConfig: NextConfig = {
         source: '/api/lang/config',
         destination: `${TARGET_SERVER_BASE_URL}/lang/config`,
       },
+      {
+        source: '/api/user/:path*',
+        destination: `${TARGET_SERVER_BASE_URL}/api/user/:path*`,
+      },
+      {
+        source: '/api/conversations/:path*',
+        destination: `${TARGET_SERVER_BASE_URL}/api/conversations/:path*`,
+      },
+      {
+        source: '/api/conversations',
+        destination: `${TARGET_SERVER_BASE_URL}/api/conversations`,
+      },
     ];
   },
 };

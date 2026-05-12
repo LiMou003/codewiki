@@ -14,6 +14,12 @@ const getWebSocketUrl = () => {
   return `${wsBaseUrl}/ws/chat`;
 };
 
+const getDeepResearchWebSocketUrl = () => {
+  const baseUrl = SERVER_BASE_URL;
+  const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
+  return `${wsBaseUrl}/ws/chat/deep-research`;
+};
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -28,6 +34,8 @@ export interface ChatCompletionRequest {
   provider?: string;
   model?: string;
   language?: string;
+  top_k?: number;
+  dimension?: number;
   excluded_dirs?: string;
   excluded_files?: string;
 }
@@ -82,4 +90,39 @@ export const closeWebSocket = (ws: WebSocket | null): void => {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.close();
   }
+};
+
+/**
+ * Creates a WebSocket connection for deep research chat completions.
+ * Uses the /ws/chat/deep-research endpoint which handles server-side
+ * multi-iteration research with @@PAGE|type|title@@ markers.
+ */
+export const createDeepResearchWebSocket = (
+  request: ChatCompletionRequest,
+  onMessage: (message: string) => void,
+  onError: (error: Event) => void,
+  onClose: () => void
+): WebSocket => {
+  const ws = new WebSocket(getDeepResearchWebSocketUrl());
+
+  ws.onopen = () => {
+    console.log('Deep Research WebSocket connection established');
+    ws.send(JSON.stringify(request));
+  };
+
+  ws.onmessage = (event) => {
+    onMessage(event.data);
+  };
+
+  ws.onerror = (error) => {
+    console.error('Deep Research WebSocket error:', error);
+    onError(error);
+  };
+
+  ws.onclose = () => {
+    console.log('Deep Research WebSocket connection closed');
+    onClose();
+  };
+
+  return ws;
 };

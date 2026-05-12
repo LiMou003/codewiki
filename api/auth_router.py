@@ -23,9 +23,10 @@ from pydantic import BaseModel, EmailStr, Field
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.database.models import Base, User as _UserRow
+from api.database import get_db
+from api.database.models import User as _UserRow
 
 logger = logging.getLogger(__name__)
 
@@ -38,35 +39,6 @@ JWT_ALGORITHM: str = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
     os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 )
-
-# MySQL database connection (falls back to SQLite for local development without MySQL)
-_DB_PATH = os.path.join(os.path.dirname(__file__), "codewiki_auth.db")
-DATABASE_URL = os.environ.get("AUTH_DATABASE_URL", f"sqlite+aiosqlite:///{_DB_PATH}")
-
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-
-# Build engine kwargs depending on dialect
-_engine_kwargs: dict = {"echo": False, "future": True}
-if DATABASE_URL.startswith("mysql"):
-    # Recommended pool settings for MySQL async connections
-    _engine_kwargs.update({"pool_recycle": 3600, "pool_pre_ping": True})
-
-_engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
-_AsyncSession = async_sessionmaker(_engine, expire_on_commit=False)
-
-
-async def init_db() -> None:
-    """Create tables if they don't exist yet."""
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-
-async def get_db() -> AsyncSession:  # type: ignore[override]
-    async with _AsyncSession() as session:
-        yield session
-
 
 # ---------------------------------------------------------------------------
 # Security helpers
@@ -114,7 +86,7 @@ def _decode_token(token: str) -> str:
         ) from exc
 
 
-async def _get_current_user(
+async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
 ) -> _UserRow:
@@ -255,7 +227,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-async def me(current_user: _UserRow = Depends(_get_current_user)):
+async def me(current_user: _UserRow = Depends(get_current_user)):
     """Return the authenticated user's profile."""
     return UserOut(
         id=current_user.id,

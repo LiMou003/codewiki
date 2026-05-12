@@ -1,9 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ThemeToggle from '@/components/theme-toggle';
+import {
+  getUserSettings,
+  updateUserSettings,
+  getDefaultConfig,
+  UserConfig,
+} from '@/services/userSettingsApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface StoredProject {
   owner: string;
@@ -12,35 +19,87 @@ interface StoredProject {
   timestamp?: number;
 }
 
+const DIMENSION_OPTIONS = [
+  { value: 64, label: '64' },
+  { value: 128, label: '128' },
+  { value: 256, label: '256（轻量）' },
+  { value: 512, label: '512' },
+  { value: 1024, label: '1024（默认）' },
+  { value: 1152, label: '1152（高精度）' },
+];
+
 export default function UserPage() {
   const router = useRouter();
-  const [user, setUser] = useState<{ username: string; email: string } | null>(null);
+  const { user, logout } = useAuth();
   const [recentProjects, setRecentProjects] = useState<StoredProject[]>([]);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('cw_user');
-      if (stored) setUser(JSON.parse(stored));
-    } catch {
-      // ignore
-    }
+  // Settings state
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Form state
+  const [topK, setTopK] = useState(20);
+  const [embeddingDimension, setEmbeddingDimension] = useState(1024);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(60);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const s = await getUserSettings();
+      const cfg = s.config || getDefaultConfig();
+      setTopK(cfg.retrieval?.top_k ?? 20);
+      setEmbeddingDimension(cfg.embedding?.dimension ?? 1024);
+      setAutoRefreshEnabled(cfg.auto_refresh?.enabled ?? true);
+      setAutoRefreshInterval(cfg.auto_refresh?.interval_minutes ?? 60);
+    } catch {
+      // use defaults
+      const d = getDefaultConfig();
+      setTopK(d.retrieval?.top_k ?? 20);
+      setEmbeddingDimension(d.embedding?.dimension ?? 1024);
+      setAutoRefreshEnabled(d.auto_refresh?.enabled ?? true);
+      setAutoRefreshInterval(d.auto_refresh?.interval_minutes ?? 60);
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
     try {
       const projects = localStorage.getItem('processedProjects');
       if (projects) {
         const parsed = JSON.parse(projects);
-        if (Array.isArray(parsed)) {
-          setRecentProjects(parsed.slice(0, 5));
-        }
+        if (Array.isArray(parsed)) setRecentProjects(parsed.slice(0, 5));
       }
-    } catch {
-      // ignore
-    }
-  }, []);
+    } catch { /* ignore */ }
+
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSignOut = () => {
-    localStorage.removeItem('cw_user');
-    router.push('/');
+    logout();
+    router.push('/login');
+  };
+
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true);
+    setSettingsMsg(null);
+    try {
+      const config: UserConfig = {
+        embedding: { dimension: embeddingDimension },
+        retrieval: { top_k: topK },
+        auto_refresh: {
+          enabled: autoRefreshEnabled,
+          interval_minutes: autoRefreshInterval,
+        },
+      };
+      await updateUserSettings({ config });
+      setSettingsMsg({ type: 'success', text: '设置已保存' });
+    } catch {
+      setSettingsMsg({ type: 'error', text: '保存失败，请重试' });
+    } finally {
+      setSettingsSaving(false);
+    }
   };
 
   if (!user) {
@@ -115,18 +174,107 @@ export default function UserPage() {
           </div>
         )}
 
-        {/* Account Settings */}
+        {/* RAG / Index Settings */}
         <div className="card-modern p-6 shadow-custom">
-          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">账户设置</h2>
-          <div className="rounded-lg bg-[var(--accent-secondary)] border border-[var(--border-color)] p-4 flex items-start gap-3">
-            <svg className="w-5 h-5 text-[var(--accent-primary)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="text-sm font-medium text-[var(--foreground)]">需要后端集成</p>
-              <p className="text-xs text-[var(--muted)] mt-1">修改密码和更新邮箱等账户设置需要后端集成支持。当前为纯前端演示，仅使用本地存储。</p>
+          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-5">检索与索引设置</h2>
+
+          {settingsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+              <div className="w-3 h-3 rounded-full border-2 border-[var(--accent-primary)] border-t-transparent animate-spin" />
+              加载设置中...
             </div>
-          </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Top-K */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
+                  向量检索 Top-K
+                </label>
+                <p className="text-xs text-[var(--muted)] mb-2">
+                  控制 RAG 检索时返回的代码片段数量。值越大上下文越丰富，但会增加 token 消耗。建议 10–30。
+                </p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={1}
+                    max={100}
+                    value={topK}
+                    onChange={e => setTopK(Number(e.target.value))}
+                    className="flex-1 h-1.5 rounded-full appearance-none bg-[var(--border-color)] cursor-pointer accent-[var(--accent-primary)]"
+                  />
+                  <span className="text-sm font-mono font-semibold text-[var(--foreground)] w-8 text-center">
+                    {topK}
+                  </span>
+                </div>
+              </div>
+
+              {/* Vector Dimension */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
+                  向量维度
+                </label>
+                <p className="text-xs text-[var(--muted)] mb-2">
+                  指定 DashScope Embedding API 返回的向量维度。
+                  维度越小索引越节省空间，但精度会有所下降。
+                  <strong>更改后需删除并重新索引仓库才能生效。</strong>
+                </p>
+                <select
+                  value={embeddingDimension}
+                  onChange={e => setEmbeddingDimension(Number(e.target.value))}
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20"
+                >
+                  {DIMENSION_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Auto Refresh */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)] mb-1.5">
+                  <input
+                    type="checkbox"
+                    checked={autoRefreshEnabled}
+                    onChange={e => setAutoRefreshEnabled(e.target.checked)}
+                    className="rounded accent-[var(--accent-primary)]"
+                  />
+                  启用仓库自动增量更新
+                </label>
+                <p className="text-xs text-[var(--muted)] mb-2">
+                  定时对远程仓库执行 git pull，自动将变更的文件重新向量化。
+                </p>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-[var(--muted)] whitespace-nowrap">更新间隔：</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={1440}
+                    value={autoRefreshInterval}
+                    onChange={e => setAutoRefreshInterval(Number(e.target.value))}
+                    disabled={!autoRefreshEnabled}
+                    className="w-24 rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 disabled:opacity-40"
+                  />
+                  <span className="text-xs text-[var(--muted)]">分钟</span>
+                </div>
+              </div>
+
+              {/* Save button + feedback */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleSaveSettings}
+                  disabled={settingsSaving}
+                  className="px-5 py-2 rounded-lg bg-[var(--accent-primary)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {settingsSaving ? '保存中...' : '保存设置'}
+                </button>
+                {settingsMsg && (
+                  <span className={`text-xs ${settingsMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                    {settingsMsg.text}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

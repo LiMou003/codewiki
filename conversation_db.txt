@@ -1,0 +1,33 @@
+-- codewiki.conversation_messages definition
+
+CREATE TABLE `conversation_messages` (
+  `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT (uuid()),
+  `conversation_id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `role` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `content` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `token_count` int DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_conv_messages_conversation_id` (`conversation_id`),
+  KEY `idx_conv_messages_created_at` (`conversation_id`,`created_at`),
+  CONSTRAINT `fk_conv_messages_conversation_id` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `ck_conv_msg_role` CHECK ((`role` in (_utf8mb4'user',_utf8mb4'assistant')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- codewiki.conversations definition
+
+CREATE TABLE `conversations` (
+  `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT (uuid()),
+  `user_id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `repo_owner` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `repo_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `repo_type` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'github',
+  `title` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_conversations_user_id` (`user_id`),
+  KEY `idx_conversations_repo` (`repo_owner`,`repo_name`),
+  KEY `idx_conversations_updated_at` (`updated_at` DESC),
+  CONSTRAINT `fk_conversations_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

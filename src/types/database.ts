@@ -31,30 +31,12 @@ export interface User {
 // 2. 用户配置 (user_settings)
 // =============================================================
 
-/** 用户配置实体（对应数据库 user_settings 表） */
-export interface UserSettings {
-  id: string;
-  userId: string;
-  preferredLanguage: string;
-  preferredModel: string | null;
-  theme: "light" | "dark";
-  notificationsEnabled: boolean;
-  extraConfig: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
+/** 用户配置（全部存储在 config JSON 列中） */
+export interface UserConfig {
+  embedding?: { dimension?: number };
+  retrieval?: { top_k?: number };
+  auto_refresh?: { enabled?: boolean; interval_minutes?: number };
 }
-
-/** 更新用户配置时的请求体（所有字段均可选） */
-export type UpdateUserSettingsRequest = Partial<
-  Pick<
-    UserSettings,
-    | "preferredLanguage"
-    | "preferredModel"
-    | "theme"
-    | "notificationsEnabled"
-    | "extraConfig"
-  >
->;
 
 // =============================================================
 // 3. 对话历史 (conversations)
@@ -87,6 +69,12 @@ export interface CreateConversationRequest {
 /** 消息发送方角色 */
 export type MessageRole = "user" | "assistant";
 
+/** 反馈状态 */
+export type FeedbackStatus = "liked" | "disliked" | null;
+
+/** 消息类型 */
+export type MessageType = "normal" | "deep_research";
+
 /** 对话消息实体（对应数据库 conversation_messages 表） */
 export interface ConversationMessage {
   id: string;
@@ -94,6 +82,8 @@ export interface ConversationMessage {
   role: MessageRole;
   content: string;
   tokenCount: number | null;
+  feedbackStatus: FeedbackStatus;
+  messageType: MessageType;
   createdAt: string;
 }
 
@@ -102,4 +92,25 @@ export interface CreateConversationMessageRequest {
   role: MessageRole;
   content: string;
   tokenCount?: number;
+  messageType?: MessageType;
+}
+
+// =============================================================
+// 5. 消息反馈 (message_feedbacks)
+// =============================================================
+
+/** 反馈实体（对应数据库 message_feedbacks 表） */
+export interface MessageFeedback {
+  id: string;
+  messageId: string;
+  userId: string;
+  feedbackType: "liked" | "disliked";
+  comment: string | null;
+  createdAt: string;
+}
+
+/** 提交反馈时的请求体 */
+export interface CreateFeedbackRequest {
+  feedbackType: "liked" | "disliked";
+  comment?: string;
 }
