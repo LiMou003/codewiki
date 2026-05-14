@@ -34,8 +34,6 @@ export interface ChatCompletionRequest {
   provider?: string;
   model?: string;
   language?: string;
-  top_k?: number;
-  dimension?: number;
   excluded_dirs?: string;
   excluded_files?: string;
 }

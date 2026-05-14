@@ -15,7 +15,6 @@ import {
   FeedbackStatus,
 } from '@/types/database';
 import * as conversationApi from '@/services/conversationApi';
-import { getUserSettings } from '@/services/userSettingsApi';
 
 interface Model {
   id: string;
@@ -95,8 +94,6 @@ const Ask: React.FC<AskProps> = ({
   const modelRef = useRef(model);
   const webSocketRef = useRef<WebSocket | null>(null);
   const skipScrollRef = useRef(false);
-  const userTopKRef = useRef<number | undefined>(undefined);
-  const userDimensionRef = useRef<number | undefined>(undefined);
 
   const clearConversation = useCallback(() => {
     setQuestion('');
@@ -131,15 +128,6 @@ const Ask: React.FC<AskProps> = ({
     return () => {
       closeWebSocket(webSocketRef.current);
     };
-  }, []);
-
-  useEffect(() => {
-    getUserSettings()
-      .then(s => {
-        userTopKRef.current = s.config?.retrieval?.top_k;
-        userDimensionRef.current = s.config?.embedding?.dimension;
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -378,8 +366,6 @@ const Ask: React.FC<AskProps> = ({
       provider: selectedProvider,
       model: isCustomSelectedModel ? customSelectedModel : selectedModel,
       language: language,
-      top_k: userTopKRef.current,
-      dimension: userDimensionRef.current,
     };
 
     if (repoInfo?.token) {
@@ -396,19 +382,20 @@ const Ask: React.FC<AskProps> = ({
       const markerMatch = message.match(pageMarkerRe);
       if (markerMatch) {
         fullResponse += message;
+        const prevPageContent = currentPageContent;
+        currentPageContent = '';
         setChatMessages(prev =>
           prev.map(msg => {
             if (msg.id !== assistantMsgId) return msg;
             const pages = [...(msg.pages || [])];
             if (pages.length > 0) {
-              pages[pages.length - 1] = { ...pages[pages.length - 1], content: currentPageContent };
+              pages[pages.length - 1] = { ...pages[pages.length - 1], content: prevPageContent };
             }
             pages.push({
               type: markerMatch[1] as 'plan' | 'update' | 'conclusion',
               title: markerMatch[2],
               content: '',
             });
-            currentPageContent = '';
             return {
               ...msg,
               hasDeepResearch: true,

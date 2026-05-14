@@ -62,8 +62,6 @@ class ChatCompletionRequest(BaseModel):
     model: Optional[str] = Field(None, description="Model name for the specified provider")
 
     language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'zh')")
-    top_k: Optional[int] = Field(None, ge=1, le=100, description="RAG retrieval top-k override")
-    dimension: Optional[int] = Field(None, ge=64, le=1152, description="Embedding vector dimension override")
     excluded_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to exclude from processing")
     excluded_files: Optional[str] = Field(None, description="Comma-separated list of file patterns to exclude from processing")
     included_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to include exclusively")
@@ -107,7 +105,11 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 included_files = [unquote(file_pattern) for file_pattern in request.included_files.split('\n') if file_pattern.strip()]
                 logger.info(f"Using custom included files: {included_files}")
 
-            request_rag.prepare_retriever(request.repo_url, request.type, request.token, excluded_dirs, excluded_files, included_dirs, included_files, dimension=request.dimension)
+            # Read dimension from DB
+            from api.settings_router import read_user_dimension_from_db
+            _dimension = await read_user_dimension_from_db()
+
+            request_rag.prepare_retriever(request.repo_url, request.type, request.token, excluded_dirs, excluded_files, included_dirs, included_files, dimension=_dimension)
             logger.info(f"Retriever prepared for {request.repo_url}")
         except ValueError as e:
             if "No valid documents with embeddings found" in str(e):

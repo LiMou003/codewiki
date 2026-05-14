@@ -184,3 +184,31 @@ async def read_user_dimension_from_db() -> Optional[int]:
     except Exception as exc:
         logger.warning("Could not read user dimension from DB: %s", exc)
         return None
+
+
+async def read_user_top_k_from_db(default: int = 20) -> int:
+    """Read RAG top_k directly from the user_settings table.
+
+    Opens its own DB session — usable from non-FastAPI contexts (e.g. WebSocket
+    handlers) where ``get_db`` / ``get_current_user`` dependencies are unavailable.
+    Returns ``default`` if no top_k has been saved by any user.
+    """
+    try:
+        from api.database import _AsyncSession as AsyncSess
+
+        async with AsyncSess() as session:
+            result = await session.execute(
+                select(UserSettingsRow).limit(1)
+            )
+            row = result.scalars().first()
+            if row is None:
+                return default
+            stored = _ensure_dict(row.extra_config)
+            top_k = (stored.get("retrieval") or {}).get("top_k")
+            if top_k is not None:
+                logger.debug("Read user top_k=%d from database", top_k)
+                return int(top_k)
+            return default
+    except Exception as exc:
+        logger.warning("Could not read user top_k from DB: %s", exc)
+        return default

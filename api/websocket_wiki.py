@@ -37,8 +37,6 @@ class ChatCompletionRequest(BaseModel):
     provider: str = Field("dashscope", description="Model provider (dashscope)")
     model: Optional[str] = Field(None, description="Model name for the specified provider")
     language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'zh')")
-    top_k: Optional[int] = Field(None, ge=1, le=100, description="RAG retrieval top-k override")
-    dimension: Optional[int] = Field(None, ge=64, le=1152, description="Embedding vector dimension override")
     excluded_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to exclude")
     excluded_files: Optional[str] = Field(None, description="Comma-separated list of file patterns to exclude")
     included_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to include exclusively")
@@ -53,19 +51,14 @@ async def _prepare_rag(request: ChatCompletionRequest) -> RAG:
     """Prepare and return a RAG instance for the given request."""
     request_rag = RAG(provider=request.provider, model=request.model)
 
-    # If the frontend did not provide a dimension override, read it directly
-    # from the database.  The frontend may not have loaded user settings yet
-    # (e.g. when the wiki page is first opened before the /user page).
-    dimension = request.dimension
-    if dimension is None:
-        try:
-            from api.settings_router import read_user_dimension_from_db
-            db_dim = await read_user_dimension_from_db()
-            if db_dim is not None:
-                dimension = db_dim
-                logger.info("Using user dimension %d from database (frontend provided None)", dimension)
-        except Exception as exc:
-            logger.warning("Could not read user dimension from DB: %s", exc)
+    dimension = None
+    try:
+        from api.settings_router import read_user_dimension_from_db
+        dimension = await read_user_dimension_from_db()
+        if dimension is not None:
+            logger.info("Using user dimension %d from database", dimension)
+    except Exception as exc:
+        logger.warning("Could not read user dimension from DB: %s", exc)
 
     excluded_dirs = None
     excluded_files = None
@@ -281,10 +274,12 @@ async def handle_websocket_chat(websocket: WebSocket):
             if tokens > 8000:
                 input_too_large = True
 
-        # RAG context
-        context_text = _retrieve_context(request_rag, query, request.filePath, request.language, request.top_k) if not input_too_large else ""
+        # RAG context — read top_k from DB
+        from api.settings_router import read_user_top_k_from_db
+        _top_k = await read_user_top_k_from_db()
+        context_text = _retrieve_context(request_rag, query, request.filePath, request.language, _top_k) if not input_too_large else ""
 
-        # Repo info
+        # Repo info (normal chat)
         repo_name = request.repo_url.split("/")[-1] if "/" in request.repo_url else request.repo_url
         repo_type = request.type or "github"
         language_code = request.language or configs["lang_config"]["default"]
@@ -520,9 +515,11 @@ async def handle_websocket_chat_deep_research(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error retrieving file content: {str(e)}")
 
-        # RAG context (retrieve once)
+        # RAG context (retrieve once) — read top_k from DB
         input_too_large = count_tokens(query) > 8000
-        context_text = _retrieve_context(request_rag, query, request.filePath, request.language, request.top_k) if not input_too_large else ""
+        from api.settings_router import read_user_top_k_from_db
+        _top_k = await read_user_top_k_from_db()
+        context_text = _retrieve_context(request_rag, query, request.filePath, request.language, _top_k) if not input_too_large else ""
 
         model_config = get_model_config(request.provider, request.model)["model_kwargs"]
         model = DashscopeClient()
