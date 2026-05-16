@@ -1,6 +1,9 @@
+import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field as dataclass_field
+from datetime import datetime
 from typing import Any, List, Optional, Tuple, Dict
 from uuid import uuid4
 
@@ -104,6 +107,37 @@ def _qdrant_search(qdrant_manager, embedder, query: str, top_k: int) -> Retrieve
         doc_scores=scores,
         documents=docs,
     )
+
+
+def _save_retrieval_result(result: RetrieverOutput, query: str):
+    save_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "retrieval_result")
+    os.makedirs(save_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    query_hash = abs(hash(query)) % 10000
+    filename = f"retrieval_{timestamp}_{query_hash:04d}.json"
+    filepath = os.path.join(save_dir, filename)
+
+    documents_data = []
+    for doc in result.documents:
+        documents_data.append({
+            "text": doc.text,
+            "meta_data": doc.meta_data,
+        })
+
+    output = {
+        "query": query,
+        "timestamp": datetime.now().isoformat(),
+        "doc_indices": result.doc_indices,
+        "doc_scores": result.doc_scores,
+        "documents": documents_data,
+    }
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+    logger.info("Saved retrieval result to %s (%d documents)", filepath, len(result.documents))
+
 
 class Memory(adal.core.component.DataComponent):
     """Simple conversation management with a list of dialog turns."""
@@ -453,6 +487,7 @@ IMPORTANT FORMATTING RULES:
             result = _qdrant_search(qdrant_manager, retrieve_embedder, query, tk)
             if result.documents:
                 logger.info("Qdrant retrieved %d chunks for query", len(result.documents))
+            _save_retrieval_result(result, query)
             return [result]
 
         except Exception as e:

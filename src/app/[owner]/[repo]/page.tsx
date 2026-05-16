@@ -238,6 +238,8 @@ export default function RepoWikiPage() {
   const [currentToken, setCurrentToken] = useState(token); // Track current effective token
   const [effectiveRepoInfo, setEffectiveRepoInfo] = useState(repoInfo); // Track effective repo info with cached data
   const [embeddingError, setEmbeddingError] = useState(false);
+  const [isIncrementalUpdating, setIsIncrementalUpdating] = useState(false);
+  const [incrementalUpdateResult, setIncrementalUpdateResult] = useState<{ updated: boolean; error?: string } | null>(null);
 
   // Model selection state variables
   const [selectedProviderState, setSelectedProviderState] = useState(providerParam);
@@ -1403,6 +1405,45 @@ IMPORTANT:
     }
   }, [wikiStructure, generatedPages, effectiveRepoInfo, language]);
 
+  const handleIncrementalUpdate = useCallback(async () => {
+    if (isIncrementalUpdating) return;
+    setIsIncrementalUpdating(true);
+    setIncrementalUpdateResult(null);
+
+    try {
+      const response = await fetch(
+        `/api/repos/${encodeURIComponent(effectiveRepoInfo.owner)}/${encodeURIComponent(effectiveRepoInfo.repo)}/incremental-update`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            owner: effectiveRepoInfo.owner,
+            repo: effectiveRepoInfo.repo,
+            repo_type: effectiveRepoInfo.type,
+            local_path: effectiveRepoInfo.localPath,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+        throw new Error(errData.detail || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      setIncrementalUpdateResult(result);
+
+      if (result.updated) {
+        setTimeout(() => setIncrementalUpdateResult(null), 5000);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setIncrementalUpdateResult({ updated: false, error: message });
+    } finally {
+      setIsIncrementalUpdating(false);
+    }
+  }, [effectiveRepoInfo, isIncrementalUpdating]);
+
   // No longer needed as we use the modal directly
 
   const confirmRefresh = useCallback(async (newToken?: string) => {
@@ -1935,6 +1976,31 @@ IMPORTANT:
                   <FaSync className={`mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                   {messages.repoPage?.refreshWiki || 'Refresh Wiki'}
                 </button>
+              </div>
+
+              {/* Incremental Update button */}
+              <div className="mb-5">
+                <button
+                  onClick={handleIncrementalUpdate}
+                  disabled={isIncrementalUpdating || isLoading}
+                  className="flex items-center w-full text-xs px-3 py-2 bg-[var(--background)] text-[var(--foreground)] rounded-md hover:bg-[var(--background)]/80 disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-color)] transition-colors hover:cursor-pointer"
+                >
+                  <FaSync className={`mr-2 ${isIncrementalUpdating ? 'animate-spin' : ''}`} />
+                  更新代码索引
+                </button>
+                {incrementalUpdateResult && (
+                  <p className={`mt-1.5 text-xs ${incrementalUpdateResult.error
+                    ? 'text-red-500'
+                    : incrementalUpdateResult.updated
+                      ? 'text-green-500'
+                      : 'text-[var(--muted)]'}`}>
+                    {incrementalUpdateResult.error
+                      ? `更新失败：${incrementalUpdateResult.error}`
+                      : incrementalUpdateResult.updated
+                        ? '已拉取最新代码并更新索引'
+                        : '仓库无新变更'}
+                  </p>
+                )}
               </div>
 
               {/* Export buttons */}

@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from urllib.parse import unquote
 
 from adalflow.core.types import ModelType
@@ -215,6 +215,73 @@ def _strip_context_from_prompt(prompt: str) -> str:
     )
 
 
+async def _stream_deep_research(
+    websocket: WebSocket,
+    model: DashscopeClient,
+    model_kwargs: dict,
+    prompt: str,
+    page_type: str,
+    page_title: str,
+) -> Tuple[Optional[str], str]:
+    """Stream LLM, detect @@NEXT_QUERY||...@@ marker, extract next query.
+
+    The LLM is instructed to end its response with:
+      @@NEXT_QUERY||the refined question for next iteration@@
+
+    Everything before the marker is streamed to the frontend.
+    The marker and next query are stripped before returning.
+    Returns (response_text, next_query). response_text is None on error.
+    """
+    import re
+
+    _MARKER = "@@NEXT_QUERY||"
+    _NEXT_QUERY_RE = re.compile(r'@@NEXT_QUERY\|\|(.+?)@@\s*$', re.DOTALL)
+
+    if page_type and page_title:
+        await websocket.send_text(f"@@PAGE|{page_type}|{page_title}@@")
+
+    api_kwargs = model.convert_inputs_to_api_kwargs(
+        input=prompt, model_kwargs=model_kwargs, model_type=ModelType.LLM,
+    )
+
+    full_text = ""
+    sent_length = 0
+
+    try:
+        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+        async for text in response:
+            if text:
+                full_text += text
+                unsent = full_text[sent_length:]
+                marker_idx = unsent.find(_MARKER)
+                if marker_idx != -1:
+                    if marker_idx > 0:
+                        await websocket.send_text(unsent[:marker_idx])
+                        sent_length += marker_idx
+                    sent_length = len(full_text)
+                else:
+                    partial = False
+                    for i in range(1, len(_MARKER)):
+                        if unsent.endswith(_MARKER[:i]):
+                            partial = True
+                            break
+                    if not partial and unsent:
+                        await websocket.send_text(unsent)
+                        sent_length = len(full_text)
+    except Exception as e:
+        logger.error(f"Deep research LLM call error: {str(e)}")
+        await websocket.send_text(f"\nError: {str(e)}")
+        return None, ""
+
+    match = _NEXT_QUERY_RE.search(full_text)
+    next_query = match.group(1).strip() if match else ""
+    response_text = _NEXT_QUERY_RE.sub('', full_text).rstrip()
+
+    logger.info("Deep research: response_len=%d, next_query=%s",
+                len(response_text), next_query[:80] if next_query else "")
+    return response_text, next_query
+
+
 # =============================================================
 # Normal chat handler
 # =============================================================
@@ -395,7 +462,20 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Be concise but thorough
 - Use markdown formatting to improve readability
 - Cite specific files and code sections when relevant
-</style>"""
+</style>
+
+<next_query_instruction>
+At the very END of your response (after all your markdown content), you MUST append the refined question for the next research iteration. Use this EXACT format, on its own line:
+@@NEXT_QUERY||your refined question here@@
+
+Rules:
+- The next query MUST be a NEW, more specific question that digs deeper into one aspect
+- Focus on details NOT yet covered - do NOT repeat the original query
+- Write it as a natural search query that would retrieve relevant code/documentation
+- Keep it concise (under 100 characters)
+- Do NOT include any text after the closing @@
+- Do NOT wrap it in code fences or JSON
+</next_query_instruction>"""
 
 _DEEP_RESEARCH_UPDATE_PROMPT = """\
 <role>
@@ -425,7 +505,21 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Focus on providing new information, not repeating what's already been covered
 - Use markdown formatting to improve readability
 - Cite specific files and code sections when relevant
-</style>"""
+</style>
+
+<next_query_instruction>
+At the very END of your response (after all your markdown content), you MUST append the refined question for the next research iteration. Use this EXACT format, on its own line:
+@@NEXT_QUERY||your refined question here@@
+
+Rules:
+- The next query MUST be a NEW question that explores an aspect NOT yet covered
+- Focus on a different angle or deeper detail than previous iterations
+- Do NOT repeat the original query or previous next queries
+- Write it as a natural search query that would retrieve relevant code/documentation
+- Keep it concise (under 100 characters)
+- Do NOT include any text after the closing @@
+- Do NOT wrap it in code fences or JSON
+</next_query_instruction>"""
 
 _DEEP_RESEARCH_CONCLUSION_PROMPT = """\
 <role>
@@ -515,11 +609,8 @@ async def handle_websocket_chat_deep_research(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error retrieving file content: {str(e)}")
 
-        # RAG context (retrieve once) — read top_k from DB
-        input_too_large = count_tokens(query) > 8000
         from api.settings_router import read_user_top_k_from_db
         _top_k = await read_user_top_k_from_db()
-        context_text = _retrieve_context(request_rag, query, request.filePath, request.language, _top_k) if not input_too_large else ""
 
         model_config = get_model_config(request.provider, request.model)["model_kwargs"]
         model = DashscopeClient()
@@ -530,40 +621,51 @@ async def handle_websocket_chat_deep_research(websocket: WebSocket):
             "top_p": model_config["top_p"],
         }
 
-        # Accumulated assistant responses for conversation history
         accumulated_responses: List[str] = []
+        next_queries: List[str] = []
+        current_query = query
 
-        # --- Iteration 1: Research Plan ---
         prompt_vars = {
             "repo_type": repo_type,
             "repo_url": request.repo_url,
             "repo_name": repo_name,
             "language_name": language_name,
         }
-        system_prompt = _DEEP_RESEARCH_PLAN_PROMPT.format(**prompt_vars)
 
+        # --- Iteration 1: Research Plan ---
+        input_too_large = count_tokens(current_query) > 8000
+        context_text = _retrieve_context(request_rag, current_query, request.filePath, request.language, _top_k) if not input_too_large else ""
+
+        system_prompt = _DEEP_RESEARCH_PLAN_PROMPT.format(**prompt_vars)
         conversation_history = ""
-        prompt = _build_prompt(system_prompt, conversation_history, file_content, request.filePath, context_text, query)
-        response_text = await _stream_llm_response(websocket, model, model_kwargs, prompt, "plan", "研究计划")
+        prompt = _build_prompt(system_prompt, conversation_history, file_content, request.filePath, context_text, current_query)
+        response_text, next_query = await _stream_deep_research(
+            websocket, model, model_kwargs, prompt, "plan", "研究计划",
+        )
 
         if response_text is None:
             await websocket.close()
             return
         accumulated_responses.append(response_text)
+        next_queries.append(next_query)
+        current_query = next_query or current_query
 
         # --- Iterations 2-4: Research Updates ---
         for iteration in range(2, DEEP_RESEARCH_MAX_ITERATIONS):
+            input_too_large = count_tokens(current_query) > 8000
+            context_text = _retrieve_context(request_rag, current_query, request.filePath, request.language, _top_k) if not input_too_large else ""
+
             prompt_vars["iteration"] = str(iteration)
             system_prompt = _DEEP_RESEARCH_UPDATE_PROMPT.format(**prompt_vars)
 
             conversation_history = "\n".join(
-                f"<turn>\n<user>{query if i == 0 else f'Continue research on: {query}'}</user>\n"
+                f"<turn>\n<user>{next_queries[i - 1] if i > 0 else query}</user>\n"
                 f"<assistant>{resp}</assistant>\n</turn>"
                 for i, resp in enumerate(accumulated_responses)
             )
 
-            prompt = _build_prompt(system_prompt, conversation_history, file_content, request.filePath, context_text, query)
-            response_text = await _stream_llm_response(
+            prompt = _build_prompt(system_prompt, conversation_history, file_content, request.filePath, context_text, current_query)
+            response_text, next_query = await _stream_deep_research(
                 websocket, model, model_kwargs, prompt,
                 "update", f"研究更新 {iteration - 1}",
             )
@@ -572,17 +674,19 @@ async def handle_websocket_chat_deep_research(websocket: WebSocket):
                 await websocket.close()
                 return
             accumulated_responses.append(response_text)
+            next_queries.append(next_query)
+            current_query = next_query or current_query
 
-        # --- Final iteration: Conclusion ---
+        # --- Final iteration: Conclusion (no retrieval, use previous research) ---
         system_prompt = _DEEP_RESEARCH_CONCLUSION_PROMPT.format(**prompt_vars)
 
         conversation_history = "\n".join(
-            f"<turn>\n<user>{query if i == 0 else f'Continue research on: {query}'}</user>\n"
+            f"<turn>\n<user>{next_queries[i - 1] if i > 0 else query}</user>\n"
             f"<assistant>{resp}</assistant>\n</turn>"
             for i, resp in enumerate(accumulated_responses)
         )
 
-        prompt = _build_prompt(system_prompt, conversation_history, file_content, request.filePath, context_text, query)
+        prompt = _build_prompt(system_prompt, conversation_history, file_content, request.filePath, "", query)
         await _stream_llm_response(websocket, model, model_kwargs, prompt, "conclusion", "最终结论")
 
         await websocket.close()

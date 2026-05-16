@@ -208,10 +208,9 @@ const Ask: React.FC<AskProps> = ({
     if (!msg.hasDeepResearch || !msg.pages || msg.pages.length === 0) {
       return msg.content;
     }
-    const idx = msg.currentPage ?? msg.pages.length - 1;
+    const idx = msg.currentPage ?? 0;
     const page = msg.pages[idx];
-    if (!page || !page.content) return msg.content;
-    return page.content;
+    return page?.content || '';
   }, []);
 
   const loadMessages = useCallback(async (conversationId: string) => {
@@ -400,7 +399,7 @@ const Ask: React.FC<AskProps> = ({
               ...msg,
               hasDeepResearch: true,
               pages,
-              currentPage: pages.length - 1,
+              content: fullResponse,
             };
           })
         );
@@ -416,7 +415,7 @@ const Ask: React.FC<AskProps> = ({
             const lastIdx = pages.length - 1;
             pages[lastIdx] = { ...pages[lastIdx], content: currentPageContent };
           }
-          return { ...msg, content: fullResponse, pages };
+          return { ...msg, content: fullResponse, pages, currentPage: pages ? pages.length - 1 : undefined };
         })
       );
     };
@@ -769,34 +768,14 @@ const Ask: React.FC<AskProps> = ({
               {currentConversation?.title || messages.ask?.title || '代码问答'}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Deep Research toggle */}
-            <div className="group relative">
-              <label className="flex items-center cursor-pointer">
-                <span className="text-xs text-[var(--muted)] mr-2">
-                  {messages.ask?.deepResearch || '深度研究'}
-                </span>
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={deepResearch}
-                    onChange={() => setDeepResearch(!deepResearch)}
-                    className="sr-only"
-                  />
-                  <div className={`w-9 h-4.5 rounded-full transition-colors ${deepResearch ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-600'}`} />
-                  <div className={`absolute left-0.5 top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-transform transform ${deepResearch ? 'translate-x-4.5' : ''}`} />
-                </div>
-              </label>
-            </div>
-            {currentConversationId && (
-              <button
-                onClick={clearConversation}
-                className="text-xs text-[var(--muted)] hover:text-red-500 px-2 py-1 rounded transition-colors"
-              >
-                <FaTimes size={12} />
-              </button>
-            )}
-          </div>
+          {currentConversationId && (
+            <button
+              onClick={clearConversation}
+              className="text-xs text-[var(--muted)] hover:text-red-500 px-2 py-1 rounded transition-colors"
+            >
+              <FaTimes size={12} />
+            </button>
+          )}
         </div>
 
         {/* Messages Area */}
@@ -951,6 +930,23 @@ const Ask: React.FC<AskProps> = ({
         {/* Input Area - Fixed at Bottom */}
         <div className="border-t border-[var(--border-color)] bg-[var(--card-bg)] p-4">
           <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+            <div className="flex items-center justify-end mb-2">
+              <label className="flex items-center cursor-pointer">
+                <span className="text-xs text-[var(--muted)] mr-2">
+                  {messages.ask?.deepResearch || '深度研究'}
+                </span>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={deepResearch}
+                    onChange={() => setDeepResearch(!deepResearch)}
+                    className="sr-only"
+                  />
+                  <div className={`w-9 h-5 rounded-full transition-colors ${deepResearch ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                  <div className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform transform ${deepResearch ? 'translate-x-4' : ''}`} />
+                </div>
+              </label>
+            </div>
             <div className="relative flex items-end gap-2">
               <div className="flex-1 relative">
                 <input

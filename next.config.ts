@@ -5,7 +5,6 @@ const TARGET_SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:
 const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
-  // Optimize build for Docker
   experimental: {
     optimizePackageImports: ['@mermaid-js/mermaid', 'react-syntax-highlighter'],
   },
@@ -74,6 +73,10 @@ const nextConfig: NextConfig = {
       {
         source: '/api/conversations',
         destination: `${TARGET_SERVER_BASE_URL}/api/conversations`,
+      },
+      {
+        source: '/api/repos/:path*',
+        destination: `${TARGET_SERVER_BASE_URL}/api/repos/:path*`,
       },
     ];
   },

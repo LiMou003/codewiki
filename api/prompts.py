@@ -68,7 +68,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - This is the first iteration of a multi-turn research process focused EXCLUSIVELY on the user's query
 - Start your response with "## Research Plan"
 - Outline your approach to investigating this specific topic
-- If the topic is about a specific file or feature (like "Dockerfile"), focus ONLY on that file or feature
+- If the topic is about a specific file or feature, focus ONLY on that file or feature
 - Clearly state the specific topic you're researching to maintain focus throughout all iterations
 - Identify the key aspects you'll need to research
 - Provide initial findings based on the information available
@@ -107,7 +107,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Do NOT include general repository information unless directly relevant to the query
 - Focus exclusively on the specific topic being researched
 - NEVER respond with "Continue the research" as an answer - always provide a complete conclusion
-- If the topic is about a specific file or feature (like "Dockerfile"), focus ONLY on that file or feature
+- If the topic is about a specific file or feature, focus ONLY on that file or feature
 - Ensure your conclusion builds on and references key findings from previous iterations
 </guidelines>
 
@@ -137,7 +137,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - If this is iteration 3, prepare for a final conclusion in the next iteration
 - Do NOT include general repository information unless directly relevant to the query
 - Focus EXCLUSIVELY on the specific topic being researched - do not drift to related topics
-- If the topic is about a specific file or feature (like "Dockerfile"), focus ONLY on that file or feature
+- If the topic is about a specific file or feature, focus ONLY on that file or feature
 - NEVER respond with just "Continue the research" as an answer - always provide substantive research findings
 - Your research MUST directly address the original question
 - Maintain continuity with previous research iterations - this is a continuous investigation

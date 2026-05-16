@@ -58,7 +58,7 @@ export default function LandingPage() {
         </svg>
       ),
       title: '强大的 AI 提供商支持',
-      desc: 'Qwen系列模型的强大回答能力,支持qwen3.5-plus、qwen3.5-flash等模型。',
+      desc: 'Qwen系列模型的强大回答能力。',
     },
   ];
 
@@ -76,16 +76,16 @@ export default function LandingPage() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2 font-bold text-xl text-[var(--accent-primary)]">
-              <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+              {/* <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-              </svg>
+              </svg> */}
               CodeWiki
             </Link>
 
             {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-6">
-              <Link href="#features" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">功能特性</Link>
-              <Link href="#how-it-works" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">使用流程</Link>
+              {/* <Link href="#features" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">功能特性</Link>
+              <Link href="#how-it-works" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">使用流程</Link> */}
               <ThemeToggle />
               {isLoggedIn ? (
                 <>
@@ -138,10 +138,10 @@ export default function LandingPage() {
       <section className="relative overflow-hidden bg-gradient-to-b from-[var(--background)] to-[var(--card-bg)] py-20 md:py-32">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--accent-secondary),_transparent_60%)] opacity-40 pointer-events-none" />
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 text-center">
-          <div className="inline-flex items-center gap-2 bg-[var(--accent-secondary)] text-[var(--accent-primary)] text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
+          {/* <div className="inline-flex items-center gap-2 bg-[var(--accent-secondary)] text-[var(--accent-primary)] text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>
             AI 驱动 · 开源
-          </div>
+          </div> */}
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-[var(--foreground)] mb-6 leading-tight">
             为任意代码仓库<br />
             <span className="text-[var(--accent-primary)]">即时生成 Wiki</span>
@@ -164,8 +164,8 @@ export default function LandingPage() {
       <section id="features" className="py-20 bg-[var(--background)]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] mb-4">一切你所需要的</h2>
-            <p className="text-[var(--muted)] text-lg max-w-xl mx-auto">强大的功能，让你比以往更快地理解任意代码库。</p>
+            {/* <h2 className="text-3xl md:text-4xl font-bold text-[var(--foreground)] mb-4">一切你所需要的</h2>
+            <p className="text-[var(--muted)] text-lg max-w-xl mx-auto">强大的功能，让你比以往更快地理解任意代码库。</p> */}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((f) => (
@@ -208,9 +208,9 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-6">
             <div className="flex items-center gap-2 font-bold text-lg text-[var(--accent-primary)]">
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+              {/* <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-              </svg>
+              </svg> */}
               CodeWiki
             </div>
             <div className="flex items-center gap-6 text-sm text-[var(--muted)]">

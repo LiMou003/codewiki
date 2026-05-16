@@ -27,17 +27,7 @@ from api.database import init_db
 @asynccontextmanager
 async def _lifespan(application):  # noqa: ARG001
     await init_db()
-    try:
-        from api.incremental_index import start_auto_refresh
-        start_auto_refresh()
-    except Exception as exc:
-        logger.warning("Could not start incremental index auto-refresh: %s", exc)
     yield
-    try:
-        from api.incremental_index import stop_auto_refresh
-        stop_auto_refresh()
-    except Exception:
-        pass
 
 
 # Initialize FastAPI app
@@ -616,9 +606,33 @@ async def refresh_repos():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+class IncrementalUpdateRequest(BaseModel):
+    owner: str = Field(..., description="Repository owner")
+    repo: str = Field(..., description="Repository name")
+    repo_type: str = Field("github", description="Repository type: github or local")
+    local_path: Optional[str] = Field(None, description="Local path for local repos")
+
+
+@app.post("/api/repos/{owner}/{repo}/incremental-update")
+async def trigger_incremental_update(owner: str, repo: str, body: IncrementalUpdateRequest):
+    """Trigger incremental index update for a single repository."""
+    try:
+        from api.incremental_index import run_incremental_update
+        result = run_incremental_update(
+            owner=body.owner,
+            repo=body.repo,
+            repo_type=body.repo_type,
+            local_path=body.local_path,
+        )
+        return result
+    except Exception as exc:
+        logger.error("Incremental update failed for %s/%s: %s", owner, repo, exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Docker and monitoring"""
+    """Health check endpoint"""
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),

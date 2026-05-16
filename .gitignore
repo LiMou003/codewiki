@@ -69,3 +69,6 @@ next-env.d.ts
 certs/
 # Auth database (runtime artifact)
 api/codewiki_auth.db
+
+# retrieval results (runtime artifact)
+retrieval_result/

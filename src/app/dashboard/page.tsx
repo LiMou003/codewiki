@@ -86,7 +86,7 @@ export default function Dashboard() {
     return key;
   };
 
-  const [repositoryInput, setRepositoryInput] = useState('https://github.com/AsyncFuncAI/deepwiki-open');
+  const [repositoryInput, setRepositoryInput] = useState('https://github.com/LiMou003/HellowWorld.git');
 
   const REPO_CONFIG_CACHE_KEY = 'deepwikiRepoConfigCache';
 

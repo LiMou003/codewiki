@@ -36,7 +36,8 @@ class RepoDiff:
 
 
 def _get_adalflow_root() -> str:
-    return os.path.expanduser(os.path.join("~", ".adalflow"))
+    from adalflow.utils import get_adalflow_default_root_path
+    return get_adalflow_default_root_path()
 
 
 def _get_repos_dir() -> str:
@@ -418,6 +419,62 @@ def stop_auto_refresh():
         _refresh_task.cancel()
     _refresh_task = None
     _refresh_stop = None
+
+
+# ---------------------------------------------------------------------------
+# Single-repo incremental update (used by API endpoint)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_repo_dir(owner: str, repo: str, repo_type: str, local_path: str = None) -> Optional[str]:
+    if repo_type == "local":
+        if local_path and os.path.isdir(local_path):
+            return local_path
+        return None
+    repo_name = f"{owner}_{repo}"
+    repo_dir = os.path.join(_get_repos_dir(), repo_name)
+    if os.path.isdir(repo_dir):
+        return repo_dir
+    return None
+
+
+def run_incremental_update(
+    owner: str,
+    repo: str,
+    repo_type: str = "github",
+    local_path: str = None,
+    embedder_type: str = "dashscope",
+) -> Dict:
+    repo_dir = _resolve_repo_dir(owner, repo, repo_type, local_path)
+    if repo_dir is None:
+        repo_name = f"{owner}_{repo}" if repo_type != "local" else os.path.basename(local_path or "")
+        logger.warning("Repo directory not found for owner=%s repo=%s type=%s", owner, repo, repo_type)
+        return {
+            "owner": owner,
+            "repo": repo,
+            "repo_type": repo_type,
+            "updated": False,
+            "error": f"Repository directory not found at expected location",
+        }
+
+    repo_name = os.path.basename(repo_dir)
+    try:
+        changed = incremental_update_for_repo(repo_dir, repo_name, embedder_type)
+        return {
+            "owner": owner,
+            "repo": repo,
+            "repo_type": repo_type,
+            "updated": changed,
+        }
+    except Exception as exc:
+        logger.error("Incremental update failed for owner=%s repo=%s: %s", owner, repo, exc)
+        return {
+            "owner": owner,
+            "repo": repo,
+            "repo_type": repo_type,
+            "updated": False,
+            "error": str(exc),
+        }
 
 
 # ---------------------------------------------------------------------------

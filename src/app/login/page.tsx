@@ -78,12 +78,12 @@ export default function LoginPage() {
               <p className="text-sm text-red-500">{error}</p>
             )}
 
-            <div className="flex items-center justify-between text-sm">
+            {/* <div className="flex items-center justify-between text-sm">
               <span />
               <span className="text-[var(--muted)] cursor-not-allowed" title="需要后端支持">
                 忘记密码？
               </span>
-            </div>
+            </div> */}
 
             <button
               type="submit"

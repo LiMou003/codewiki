@@ -230,7 +230,7 @@ export default function UserPage() {
               </div>
 
               {/* Auto Refresh */}
-              <div>
+              {/* <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)] mb-1.5">
                   <input
                     type="checkbox"
@@ -256,7 +256,7 @@ export default function UserPage() {
                   />
                   <span className="text-xs text-[var(--muted)]">分钟</span>
                 </div>
-              </div>
+              </div> */}
 
               {/* Save button + feedback */}
               <div className="flex items-center gap-3 pt-2">
